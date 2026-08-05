@@ -33,6 +33,8 @@ export interface RenderOptions {
   highlightNet?: number;
   /** draw the faint cell grid */
   showGrid?: boolean;
+  /** cells a drag is about to lay down */
+  preview?: { x: number; y: number }[] | null;
 }
 
 export function cellAtScreen(vp: Viewport, sx: number, sy: number): { x: number; y: number } {
@@ -494,6 +496,37 @@ export function renderBoard(
   for (let i = 0; i < world.placements.length; i++) drawBlueprintInstance(ctx, world, i, vp);
 
   // overlays
+  if (opts.preview && opts.preview.length > 1) {
+    const t = Math.max(3, Math.round(S_ * TRACE));
+    ctx.fillStyle = T.ghost;
+    for (const p of opts.preview) {
+      if (!inBounds(g, p.x, p.y)) continue;
+      const { sx, sy } = cellOrigin(vp, p.x, p.y);
+      ctx.fillRect(sx + S_ / 2 - t / 2, sy + S_ / 2 - t / 2, t, t);
+    }
+    ctx.strokeStyle = T.traceOn;
+    ctx.lineWidth = Math.max(2, S_ * 0.1);
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.globalAlpha = 0.75;
+    ctx.beginPath();
+    let started = false;
+    for (const p of opts.preview) {
+      if (!inBounds(g, p.x, p.y)) {
+        started = false;
+        continue;
+      }
+      const { sx, sy } = cellOrigin(vp, p.x, p.y);
+      const cx = sx + S_ / 2;
+      const cy = sy + S_ / 2;
+      if (started) ctx.lineTo(cx, cy);
+      else ctx.moveTo(cx, cy);
+      started = true;
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
   if (opts.ghost) {
     const { sx, sy } = cellOrigin(vp, opts.ghost.x, opts.ghost.y);
     ctx.strokeStyle = opts.ghost.ok ? T.accent : T.bad;

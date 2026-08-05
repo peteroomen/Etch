@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { Kind } from '../sim/kinds';
 import { at, cellKind, idx, inBounds } from '../sim/grid';
 import { bresenham, drawStroke, linkComponent, linkPin, Point } from '../sim/draw';
+import { Axis, axisOf, clampToBoard, planRoute } from '../sim/route';
 import { placeBlueprint, placeComponent, removeAt, setCell, tick } from '../sim/world';
 import { Viewport, cellAtScreen, fitViewport, renderBoard } from '../render/board';
 import { MAX_CELL, MIN_CELL } from '../render/tokens';
@@ -23,7 +24,10 @@ export function Board() {
   const wrapRef = useRef<HTMLDivElement>(null);
   const vp = useRef<Viewport>({ ox: 0, oy: 0, cell: 30 });
   const pointers = useRef(new Map<number, { x: number; y: number }>());
-  const stroke = useRef<{ last: Point | null; active: boolean }>({ last: null, active: false });
+  /** an in-progress wire drag: where it started, which way it set off, what it will lay */
+  const route = useRef<{ anchor: Point; axis: Axis | null; path: Point[] } | null>(null);
+  /** the last cell the eraser passed through */
+  const erasing = useRef<Point | null>(null);
   const pinch = useRef<{ dist: number; cx: number; cy: number } | null>(null);
   const hover = useRef<{ x: number; y: number } | null>(null);
   const lastRev = useRef(-1);
@@ -93,22 +97,29 @@ export function Board() {
     for (const pin of bp.pins) linkPin(w, x + pin.dx, y + pin.dy, pin.dir);
   };
 
-  const strokeTo = useCallback((x: number, y: number) => {
-    const item = paletteItem(toolRef.current);
-    const last = stroke.current.last;
-    if (!item) return;
+  const beginRoute = useCallback((c: Point) => {
+    if (!inBounds(session.world.grid, c.x, c.y)) return;
+    route.current = { anchor: c, axis: null, path: [c] };
+  }, []);
 
-    if (item.tool === 'wire') {
-      const pts: Point[] = last ? bresenham(last.x, last.y, x, y) : [{ x, y }];
-      drawStroke(session.world, pts);
-    } else if (item.tool === 'erase') {
-      const pts: Point[] = last ? bresenham(last.x, last.y, x, y) : [{ x, y }];
-      for (const p of pts) removeAt(session.world, p.x, p.y);
-    } else if (!last) {
-      applyAt(x, y);
-    }
-    stroke.current.last = { x, y };
-  }, [applyAt]);
+  const extendRoute = useCallback((raw: Point) => {
+    const r = route.current;
+    if (!r) return;
+    const c = clampToBoard(session.world, raw);
+    // the drag commits to an axis on its first real movement and keeps it, so
+    // the corner lands where you expect rather than flipping under your thumb
+    if (!r.axis && (c.x !== r.anchor.x || c.y !== r.anchor.y)) r.axis = axisOf(r.anchor, c);
+    r.path = planRoute(session.world, r.anchor, c, r.axis ?? 'h');
+  }, []);
+
+  const finishRoute = useCallback(() => {
+    const r = route.current;
+    route.current = null;
+    if (!r || r.path.length === 0) return;
+    beginEdit();
+    drawStroke(session.world, r.path);
+    commitEdit();
+  }, []);
 
   // ---------------------------------------------------------------- pointers
 
@@ -127,10 +138,11 @@ export function Board() {
       pointers.current.set(e.pointerId, p);
 
       if (pointers.current.size === 2) {
-        // second finger: abandon any stroke and switch to viewport gestures
-        if (stroke.current.active) {
+        // second finger: abandon the drag and switch to viewport gestures
+        route.current = null;
+        if (erasing.current) {
+          erasing.current = null;
           commitEdit();
-          stroke.current = { last: null, active: false };
         }
         const [a, b] = [...pointers.current.values()];
         pinch.current = {
@@ -144,13 +156,25 @@ export function Board() {
 
       const c = cellAtScreen(vp.current, p.x, p.y);
       const item = paletteItem(toolRef.current);
-      if (item?.tool === 'inspect') {
+      if (!item) return;
+      if (item.tool === 'inspect') {
         applyAt(c.x, c.y);
         return;
       }
+      if (item.tool === 'wire') {
+        beginRoute(c);
+        return;
+      }
+      if (item.tool === 'erase') {
+        beginEdit();
+        erasing.current = c;
+        removeAt(session.world, c.x, c.y);
+        return;
+      }
+      // everything else is a tap: place it and be done
       beginEdit();
-      stroke.current = { last: null, active: true };
-      strokeTo(c.x, c.y);
+      applyAt(c.x, c.y);
+      commitEdit();
     };
 
     const onMove = (e: PointerEvent) => {
@@ -178,20 +202,32 @@ export function Board() {
         return;
       }
 
-      if (stroke.current.active) {
-        const c = cellAtScreen(vp.current, p.x, p.y);
-        if (!stroke.current.last || stroke.current.last.x !== c.x || stroke.current.last.y !== c.y) {
-          strokeTo(c.x, c.y);
-        }
+      const c = cellAtScreen(vp.current, p.x, p.y);
+      hover.current = c;
+
+      if (route.current) {
+        extendRoute(c);
+        return;
       }
-      hover.current = cellAtScreen(vp.current, p.x, p.y);
+      if (erasing.current) {
+        // the eraser stays freehand — you want it to follow your finger exactly
+        for (const q of bresenham(erasing.current.x, erasing.current.y, c.x, c.y)) {
+          removeAt(session.world, q.x, q.y);
+        }
+        erasing.current = c;
+      }
     };
 
     const onUp = (e: PointerEvent) => {
       pointers.current.delete(e.pointerId);
       if (pointers.current.size < 2) pinch.current = null;
-      if (pointers.current.size === 0 && stroke.current.active) {
-        stroke.current = { last: null, active: false };
+      if (pointers.current.size !== 0) return;
+      if (route.current) {
+        finishRoute();
+        return;
+      }
+      if (erasing.current) {
+        erasing.current = null;
         commitEdit();
       }
     };
@@ -206,7 +242,7 @@ export function Board() {
       cv.removeEventListener('pointerup', onUp);
       cv.removeEventListener('pointercancel', onUp);
     };
-  }, [applyAt, strokeTo]);
+  }, [applyAt, beginRoute, extendRoute, finishRoute]);
 
   // ---------------------------------------------------------------- loop
 
@@ -269,6 +305,7 @@ export function Board() {
         renderBoard(ctx, session.world, vp.current, cssW, cssH, {
           hover: hover.current,
           ghost,
+          preview: route.current?.path ?? null,
           highlightNet: probeNet,
         });
       }

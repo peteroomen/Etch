@@ -34,8 +34,27 @@ export const session: Session = {
   rev: 0,
 };
 
+const listeners = new Set<() => void>();
+
+/**
+ * React cannot see the board, by design — but it does need to know when the
+ * undo history changed, or the undo and redo buttons show stale state forever.
+ * This is the one thread between the two worlds, and it carries a number.
+ */
+export function subscribeSession(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
+
+export function sessionRev(): number {
+  return session.rev;
+}
+
 export function touched(): void {
   session.rev++;
+  for (const fn of listeners) fn();
 }
 
 export function loadLevel(level: Level): void {
@@ -59,6 +78,7 @@ export function beginEdit(): void {
   session.undoStack.push(snapshot(session.world));
   if (session.undoStack.length > UNDO_DEPTH) session.undoStack.shift();
   session.redoStack = [];
+  touched(); // a fresh edit invalidates redo, and the button has to notice
 }
 
 /**

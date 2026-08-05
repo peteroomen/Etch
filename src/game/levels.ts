@@ -233,8 +233,9 @@ const copy: Level = {
   brief: [
     'Q1 is NOR of A and B. Q2 is NOR of A and C.',
     'Both need A. But joining A into the first NOR consumes it — A and B become one node, and there is no A left to give the second.',
-    'Two ways out. BUF drives a new node with the value it reads: one component, one tick, an independent copy. Or the OR gate, which reads both its inputs rather than merging them, at the same price.',
-    'Here they cost exactly the same. They will not always.',
+    'You can already do this. A copy is two inverters back to back, and that route costs five components and three ticks.',
+    'Two cheaper ways. BUF drives a new node with the value it reads — one component, one tick, an independent copy. Or the OR gate, which reads both its inputs rather than merging them. Either gets you to four and two.',
+    'Here the two cost exactly the same. They will not always.',
   ],
   grid: { w: 16, h: 11 },
   inputs: [
@@ -278,7 +279,8 @@ const oneOrOther: Level = {
   brief: [
     'OUT is HIGH when exactly one input is HIGH.',
     'The textbook form is (A OR B) AND NOT (A AND B). It cannot be built here: computing A OR B destroys the A and B the second half still needs.',
-    'Build (A AND NOT B) OR (NOT A AND B) instead. Each half joins an inverter output with a buffered copy, so nothing is consumed before it has been used.',
+    'Build (A AND NOT B) OR (NOT A AND B) instead. Each half joins an inverter output with a copy, so nothing is consumed before it has been used.',
+    'Inverters alone will do it in eight. With a cheap copy it comes down to six.',
   ],
   grid: { w: 18, h: 12 },
   inputs: [

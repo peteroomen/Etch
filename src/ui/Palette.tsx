@@ -1,5 +1,6 @@
+import { useSyncExternalStore } from 'react';
 import { resolvePalette } from '../game/palette';
-import { canRedo, canUndo, redo, undo } from '../state/session';
+import { canRedo, canUndo, redo, sessionRev, subscribeSession, undo } from '../state/session';
 import { useUI } from '../state/store';
 
 const DIR_ARROW = ['↑', '→', '↓', '←'];
@@ -35,6 +36,8 @@ export function Palette({ palette, onVerify }: Props) {
   const rate = useUI((s) => s.rate);
   const setRate = useUI((s) => s.setRate);
   const unlocked = useUI((s) => s.unlocked);
+  // the history lives outside React; without this the buttons never re-enable
+  useSyncExternalStore(subscribeSession, sessionRev, sessionRev);
 
   const items = resolvePalette(palette).filter(
     (i) => !i.blueprint || unlocked.includes(i.blueprint),

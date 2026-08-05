@@ -190,3 +190,38 @@ faces back: wire-family neighbours by their effective mask, components and
 blueprint instances by their pin list. A plain wire keeps arms running into
 empty board — the player drew those and a dangling end should look dangling —
 and loses only the ones aimed at something that does not connect.
+
+### The fan-in wall is price, not possibility
+Corrected by the balance model, which searched the space exhaustively rather
+than taking my reasoning for it.
+
+A copy does not require BUF. Two inverters back to back are a copy, and they
+were always available. So every level is solvable with inverters and merging
+alone — the newer tools just make it cheaper:
+
+| level | inverters only | with BUF or OR |
+|---|---|---|
+| Copy | 5 components, 3 ticks | 4 and 2 |
+| XOR | 8 components, 3 ticks | 6 and 2 |
+
+What is genuinely not constructible is the textbook *formula*
+`(a∨b) ∧ ¬(a∧b)`, because computing `a∨b` consumes the operands the other half
+needs. That is a real teaching moment, but it is about transcription, not about
+the function.
+
+The level briefs said "two ways out" where the honest line is "here is a third,
+and it costs more". They now name the price.
+
+### The metrics only start trading at the half adder
+Ten of the eleven searchable levels have exactly one non-dominated solution, so
+components, ticks and area cannot be played against each other there — the score
+is a target, not a choice. The half adder is the first level with a real
+frontier: **7 components / 3 ticks ↔ 9 / 2**, spend two to save one.
+
+That is expected for small teaching levels and it is a warning about the later
+ones. If chapter 4 lands and its levels also have a single dominant answer, the
+three-metric model is decoration and should be cut back to one.
+
+Par sits at the tick-optimal end of the half adder's frontier (9c/2t), so its
+apparent two-component "headroom" is not sloppiness — it is the trade-off doing
+its job.
