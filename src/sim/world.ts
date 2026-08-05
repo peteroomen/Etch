@@ -11,7 +11,7 @@
  * is unreachable until transistors introduce a strong low.
  */
 
-import { Dir, E, Kind, isWireFamily, kindDef, worldPins } from './kinds';
+import { DIR_VEC, Dir, E, Kind, isWireFamily, kindDef, opposite, worldPins } from './kinds';
 import { Grid, at, cellKind, cellRot, cloneGrid, createGrid, idx, inBounds, pack } from './grid';
 import { NetMap, NetTable, createNetTable, extractNets, growNets, netAtPin, netValue } from './nets';
 import { HI, LO, V, X, Z, driveBit, resolve } from './values';
@@ -59,6 +59,8 @@ export interface World {
   inputs: Map<string, boolean>;
   /** "x,y" -> level pin name, for sources and sinks */
   pinNames: Map<string, string>;
+  /** "x,y,dir" -> net, for pins connected by touching rather than by wire */
+  bridged: Map<string, number>;
 }
 
 const EMPTY_LIBRARY: BlueprintLibrary = new Map();
@@ -80,6 +82,7 @@ export function createWorld(w: number, h: number, library: BlueprintLibrary = EM
     dirty: true,
     inputs: new Map(),
     pinNames: new Map(),
+    bridged: new Map(),
   };
   rebuild(world);
   return world;
@@ -261,7 +264,101 @@ function mkComp(
  * joins the two wires feeding it — and the player sees them light as one node,
  * which is the honest signal that the gate consumed its inputs.
  */
-function aliasPlacementPins(world: World, map: NetMap): void {
+interface PinSite {
+  x: number;
+  y: number;
+  dir: Dir;
+}
+
+const siteKey = (x: number, y: number, dir: Dir) => `${x},${y},${dir}`;
+
+/** Every pin on the board, from primitives and from blueprint instances. */
+function allPinSites(world: World): PinSite[] {
+  const g = world.grid;
+  const out: PinSite[] = [];
+  for (let y = 0; y < g.h; y++) {
+    for (let x = 0; x < g.w; x++) {
+      const cell = at(g, x, y);
+      const kind = cellKind(cell);
+      if (kind === Kind.Empty || isWireFamily(kind) || kind === Kind.Blueprint) continue;
+      for (const p of worldPins(kind, x, y, cellRot(cell))) {
+        out.push({ x: p.x, y: p.y, dir: p.dir });
+      }
+    }
+  }
+  for (const place of world.placements) {
+    const bp = world.library.get(place.id);
+    if (!bp) continue;
+    for (const pin of bp.pins) {
+      out.push({ x: place.x + pin.dx, y: place.y + pin.dy, dir: pin.dir });
+    }
+  }
+  return out;
+}
+
+/**
+ * Connect pins that face each other with no wire between them.
+ *
+ * A pin binds through a NET, and a net needs at least one wire cell to exist —
+ * so without this, an inverter whose output pad touches a sink's input pad is
+ * not connected to it, while the board draws the two stubs meeting. That is the
+ * picture lying about what is joined, and it cost a playtester an evening.
+ *
+ * Touching pins get a net of their own, allocated past the wire nets.
+ */
+function bridgeTouchingPins(world: World, map: NetMap): Map<string, number> {
+  const g = world.grid;
+  const bridged = new Map<string, number>();
+  const sites = allPinSites(world).filter((p) => netAtPin(g, map, p.x, p.y, p.dir) < 0);
+  if (sites.length < 2) return bridged;
+
+  const index = new Map<string, number>();
+  sites.forEach((p, i) => index.set(siteKey(p.x, p.y, p.dir), i));
+
+  const parent = sites.map((_, i) => i);
+  const find = (a: number): number => {
+    while (parent[a] !== a) a = parent[a] = parent[parent[a]];
+    return a;
+  };
+  const union = (a: number, b: number) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent[Math.max(ra, rb)] = Math.min(ra, rb);
+  };
+
+  let joined = false;
+  sites.forEach((p, i) => {
+    const [dx, dy] = DIR_VEC[p.dir];
+    const j = index.get(siteKey(p.x + dx, p.y + dy, opposite(p.dir)));
+    if (j !== undefined) {
+      union(i, j);
+      joined = true;
+    }
+  });
+  if (!joined) return bridged;
+
+  // a pin that touched nothing keeps no net; only real groups get one
+  const size = new Map<number, number>();
+  sites.forEach((_, i) => {
+    const root = find(i);
+    size.set(root, (size.get(root) ?? 0) + 1);
+  });
+
+  const groupNet = new Map<number, number>();
+  sites.forEach((p, i) => {
+    const root = find(i);
+    if ((size.get(root) ?? 0) < 2) return;
+    let net = groupNet.get(root);
+    if (net === undefined) {
+      net = map.count++;
+      groupNet.set(root, net);
+    }
+    bridged.set(siteKey(p.x, p.y, p.dir), net);
+  });
+  return bridged;
+}
+
+function aliasPlacementPins(world: World, map: NetMap, bridged: Map<string, number>): void {
   const g = world.grid;
   const parent = new Int32Array(map.count);
   for (let i = 0; i < map.count; i++) parent[i] = i;
@@ -288,7 +385,10 @@ function aliasPlacementPins(world: World, map: NetMap): void {
     if (!bp) continue;
     const byInternal = new Map<number, number[]>();
     bp.pins.forEach((pin) => {
-      const host = netAtPin(g, map, place.x + pin.dx, place.y + pin.dy, pin.dir);
+      const px = place.x + pin.dx;
+      const py = place.y + pin.dy;
+      const wired = netAtPin(g, map, px, py, pin.dir);
+      const host = wired >= 0 ? wired : (bridged.get(siteKey(px, py, pin.dir)) ?? -1);
       if (host < 0) return;
       const list = byInternal.get(pin.net);
       if (list) list.push(host);
@@ -315,15 +415,22 @@ function aliasPlacementPins(world: World, map: NetMap): void {
     if (map.netA[i] >= 0) map.netA[i] = remap[map.netA[i]];
     if (map.netB[i] >= 0) map.netB[i] = remap[map.netB[i]];
   }
+  for (const [key, net] of bridged) bridged.set(key, remap[net]);
   map.count = next;
 }
 
 export function rebuild(world: World): void {
   const g = world.grid;
   const map = extractNets(g);
-  aliasPlacementPins(world, map);
+  const bridged = bridgeTouchingPins(world, map);
+  aliasPlacementPins(world, map, bridged);
   const nets = createNetTable(map.count, LO);
   const comps: Component[] = [];
+  /** a pin's net: through wire when there is any, else through a direct touch */
+  const netFor = (x: number, y: number, dir: Dir): number => {
+    const wired = netAtPin(g, map, x, y, dir);
+    return wired >= 0 ? wired : (bridged.get(siteKey(x, y, dir)) ?? -1);
+  };
 
   for (let y = 0; y < g.h; y++) {
     for (let x = 0; x < g.w; x++) {
@@ -334,7 +441,7 @@ export function rebuild(world: World): void {
       const inNets: number[] = [];
       let outNet = -1;
       for (const p of worldPins(kind, x, y, rot)) {
-        const net = netAtPin(g, map, p.x, p.y, p.dir);
+        const net = netFor(p.x, p.y, p.dir);
         if (p.role === 'in') inNets.push(net);
         else outNet = net;
       }
@@ -351,7 +458,7 @@ export function rebuild(world: World): void {
       bp,
       (pinIndex) => {
         const pin = bp.pins[pinIndex];
-        return netAtPin(g, map, place.x + pin.dx, place.y + pin.dy, pin.dir);
+        return netFor(place.x + pin.dx, place.y + pin.dy, pin.dir);
       },
       {
         library: world.library,
@@ -372,6 +479,7 @@ export function rebuild(world: World): void {
   world.map = map;
   world.nets = nets;
   world.comps = comps;
+  world.bridged = bridged;
   world.dirty = false;
   applyInputs(world);
   commit(world);
@@ -525,6 +633,15 @@ export function readOutputVector(world: World, names: string[]): boolean[] {
 
 export function readNet(world: World, net: number): V {
   return netValue(world.nets, net);
+}
+
+/**
+ * The net a pin is on, whether it got there through wire or by touching
+ * another pin. The renderer needs this or a touching pin draws dead.
+ */
+export function pinNet(world: World, x: number, y: number, dir: Dir): number {
+  const wired = netAtPin(world.grid, world.map, x, y, dir);
+  return wired >= 0 ? wired : (world.bridged.get(`${x},${y},${dir}`) ?? -1);
 }
 
 /** Net under a cell, for the inspect tool. */

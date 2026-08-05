@@ -12,8 +12,8 @@
 
 import { Dir, E, Kind, N, S, W, isWireFamily, kindDef, maskBit, opposite, worldPins } from '../sim/kinds';
 import { at, cellKind, cellMask, cellRot, effectiveMask, idx, inBounds } from '../sim/grid';
-import { HI, LO, V, X, Z } from '../sim/values';
-import { World } from '../sim/world';
+import { HI, LO, V, V_NAME, X, Z } from '../sim/values';
+import { World, pinNet } from '../sim/world';
 import { BODY_INSET, T, TRACE } from './tokens';
 
 export interface Viewport {
@@ -27,8 +27,8 @@ export interface Viewport {
 export interface RenderOptions {
   /** cell under the pointer, highlighted */
   hover?: { x: number; y: number } | null;
-  /** footprint preview for the currently held component */
-  ghost?: { x: number; y: number; w: number; h: number; ok: boolean } | null;
+  /** footprint preview for the currently held component, with its facing */
+  ghost?: { x: number; y: number; w: number; h: number; ok: boolean; kind?: Kind; rot?: Dir } | null;
   /** net id to highlight, from the inspect tool */
   highlightNet?: number;
   /** draw the faint cell grid */
@@ -291,20 +291,17 @@ function drawComponent(ctx: CanvasRenderingContext2D, world: World, x: number, y
   const fh = (def?.h ?? 1) * S_;
   const inset = Math.max(1.5, S_ * BODY_INSET);
 
-  // pin stubs first, so the body sits on top of them and the join looks welded
+  // Pin stubs first, so the body sits on top and the join looks welded — and
+  // only where a pin is actually on a net. A pin connected to nothing draws
+  // nothing, so a gate you forgot to wire up looks unwired.
   for (const p of worldPins(kind, x, y, rot)) {
-    const net = (() => {
-      const nx = p.x + (p.dir === E ? 1 : p.dir === W ? -1 : 0);
-      const ny = p.y + (p.dir === S ? 1 : p.dir === N ? -1 : 0);
-      if (!inBounds(world.grid, nx, ny)) return LO;
-      const ni = idx(world.grid, nx, ny);
-      const slot = world.map.netB[ni] >= 0 && (p.dir === N || p.dir === S) ? 1 : 0;
-      return netValueAt(world, ni, slot as 0 | 1);
-    })();
+    const net = pinNet(world, p.x, p.y, p.dir);
+    if (net < 0) continue;
+    const v = world.nets.value[net] as V;
     ctx.save();
     ctx.translate((p.x - x) * S_, (p.y - y) * S_);
-    withGlow(ctx, net === HI, S_, () => {
-      ctx.fillStyle = traceColor(net);
+    withGlow(ctx, v === HI, S_, () => {
+      ctx.fillStyle = traceColor(v);
       const [rx, ry, rw, rh] = armRect(p.dir, S_, t);
       ctx.fillRect(rx, ry, rw, rh);
     });
@@ -376,14 +373,9 @@ function drawBlueprintInstance(
   for (const pin of bp.pins) {
     const px = place.x + pin.dx;
     const py = place.y + pin.dy;
-    const nx = px + (pin.dir === E ? 1 : pin.dir === W ? -1 : 0);
-    const ny = py + (pin.dir === S ? 1 : pin.dir === N ? -1 : 0);
-    let v: V = LO;
-    if (inBounds(world.grid, nx, ny)) {
-      const ni = idx(world.grid, nx, ny);
-      const slot = world.map.netB[ni] >= 0 && (pin.dir === N || pin.dir === S) ? 1 : 0;
-      v = netValueAt(world, ni, slot as 0 | 1);
-    }
+    const net = pinNet(world, px, py, pin.dir);
+    if (net < 0) continue;
+    const v = world.nets.value[net] as V;
     ctx.save();
     ctx.translate(pin.dx * S_, pin.dy * S_);
     withGlow(ctx, v === HI, S_, () => {
@@ -534,6 +526,26 @@ export function renderBoard(
     ctx.lineWidth = 2;
     ctx.fillRect(sx, sy, opts.ghost.w * S_, opts.ghost.h * S_);
     ctx.strokeRect(sx + 1, sy + 1, opts.ghost.w * S_ - 2, opts.ghost.h * S_ - 2);
+
+    // which way it will face, and where its pins will land — placing a gate
+    // backwards is invisible otherwise, and it is the commonest way to get stuck
+    if (opts.ghost.kind !== undefined && opts.ghost.ok) {
+      const gk = opts.ghost.kind;
+      const grot = (opts.ghost.rot ?? E) as Dir;
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.globalAlpha = 0.85;
+      for (const p of worldPins(gk, opts.ghost.x, opts.ghost.y, grot)) {
+        ctx.save();
+        ctx.translate((p.x - opts.ghost.x) * S_, (p.y - opts.ghost.y) * S_);
+        ctx.fillStyle = p.role === 'out' ? T.traceOn : T.accent;
+        const [rx, ry, rw, rh] = armRect(p.dir, S_, Math.max(3, Math.round(S_ * TRACE * 0.7)));
+        ctx.fillRect(rx, ry, rw, rh);
+        ctx.restore();
+      }
+      drawGlyph(ctx, gk, S_, grot, false);
+      ctx.restore();
+    }
   } else if (opts.hover && inBounds(g, opts.hover.x, opts.hover.y)) {
     const { sx, sy } = cellOrigin(vp, opts.hover.x, opts.hover.y);
     ctx.strokeStyle = T.accentSoft;
@@ -542,6 +554,22 @@ export function renderBoard(
   }
 
   if (opts.highlightNet !== undefined && opts.highlightNet >= 0) {
+    const net = opts.highlightNet;
+    const v = (world.nets.value[net] ?? Z) as V;
+    const drivers = world.nets.drivers[net]?.length ?? 0;
+    const label = `NET ${net}  ·  ${V_NAME[v]}  ·  ${drivers} driver${drivers === 1 ? '' : 's'}`;
+    ctx.font = '600 11px ui-monospace, Menlo, monospace';
+    const tw = ctx.measureText(label).width;
+    ctx.fillStyle = 'rgba(10,12,16,0.92)';
+    ctx.fillRect(8, 8, tw + 18, 26);
+    ctx.strokeStyle = T.accent;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(8.5, 8.5, tw + 17, 25);
+    ctx.fillStyle = v === HI ? T.traceOn : v === X ? T.bad : T.text;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, 17, 22);
+
     ctx.strokeStyle = T.accent;
     ctx.lineWidth = 1.5;
     for (let y = y0; y <= y1; y++) {

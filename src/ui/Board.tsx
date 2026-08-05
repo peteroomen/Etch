@@ -300,6 +300,8 @@ export function Board() {
                 w: item.w,
                 h: item.h,
                 ok: inBounds(session.world.grid, hover.current.x, hover.current.y),
+                kind: item.kind,
+                rot: rotRef.current,
               }
             : null;
         renderBoard(ctx, session.world, vp.current, cssW, cssH, {

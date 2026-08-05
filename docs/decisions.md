@@ -225,3 +225,30 @@ three-metric model is decoration and should be cut back to one.
 Par sits at the tick-optimal end of the half adder's frontier (9c/2t), so its
 apparent two-component "headroom" is not sloppiness — it is the trade-off doing
 its job.
+
+### Pins that touch are connected
+Found by playtesting: an inverter pressed straight against the output pad did
+not work. A pin binds through a NET, and a net needs at least one wire cell to
+exist, so two components abutting each other had nothing to share — while the
+renderer drew their stubs meeting. The picture was lying about what was joined,
+which is the same failure as the junction legs and cost an evening.
+
+Touching pins now get a net of their own, allocated past the wire nets and
+unioned so a run of abutting components forms one node. It is physically right
+and it matches what every player expects.
+
+### A pin connected to nothing draws nothing
+The corollary, and the more valuable half. The renderer used to draw every pin
+stub regardless, so an unwired gate looked wired. Stubs are now drawn only where
+the pin is actually on a net, which turns "why doesn't this work" into a visible
+gap in the picture.
+
+Two more legibility fixes from the same session, both aimed at the failures the
+variant sweep turned up:
+
+- **The placement ghost shows orientation.** Input stubs in cyan, output in
+  amber, glyph rotated. Placing a gate backwards was previously invisible until
+  you inspected the drawn glyph, and it was the commonest way to get stuck.
+- **The probe reports.** Tapping a net names it, gives its value and its driver
+  count, and outlines every cell that shares it — which is how a player answers
+  "are these actually one wire" without guessing.

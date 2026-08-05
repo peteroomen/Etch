@@ -241,3 +241,56 @@ describe('the OR component — joining without consuming', () => {
     expect(show(results.map((r) => r.out))).toBe('0 0');
   });
 });
+
+describe('pins that touch are connected', () => {
+  /**
+   * A pin binds through a net, and a net needs a wire cell to exist — so
+   * without bridging, two components pressed against each other are drawn
+   * touching and simulated apart. That is the board lying, and it cost a
+   * playtester an evening on the NOR level.
+   */
+  it('an inverter feeding a sink with no wire between them still works', () => {
+    const w = board(10, 6);
+    src(w, 'a', 0, 3);
+    run(w, 1, 3, 3, 3);
+    inv(w, 4, 3);
+    sink(w, 'q', 5, 3); // pressed straight up against the inverter
+
+    expect(show(truthTable(w, ['a'], ['q']))).toBe('1 0');
+  });
+
+  it('two inverters back to back are a buffer', () => {
+    const w = board(10, 6);
+    src(w, 'a', 0, 3);
+    run(w, 1, 3, 3, 3);
+    inv(w, 4, 3);
+    inv(w, 5, 3);
+    sink(w, 'q', 6, 3);
+
+    expect(show(truthTable(w, ['a'], ['q']))).toBe('0 1');
+    expect(componentCount(w)).toBe(2);
+  });
+
+  it('leaves pins that merely sit side by side alone', () => {
+    const w = board(10, 8);
+    src(w, 'a', 0, 3);
+    run(w, 1, 3, 3, 3);
+    inv(w, 4, 3);
+    // the sink is below the inverter, and its input faces north at nothing
+    sink(w, 'q', 4, 4, S);
+
+    expect(show(truthTable(w, ['a'], ['q']))).toBe('0 0');
+  });
+
+  it('bridges a blueprint pressed against a sink too', () => {
+    const w = board(14, 8, LIBRARY);
+    src(w, 'a', 0, 1);
+    run(w, 1, 1, 3, 1);
+    src(w, 'b', 0, 3);
+    run(w, 1, 3, 3, 3);
+    expect(bp(w, 'and2', 4, 1)).toBe(true);
+    sink(w, 'q', 6, 2); // touching the blueprint's output pad
+
+    expect(show(truthTable(w, ['a', 'b'], ['q']))).toBe('0 0 0 1');
+  });
+});
