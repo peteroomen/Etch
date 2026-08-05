@@ -6,8 +6,6 @@ import { bresenham, drawRun, linkPin } from './draw';
 import { board, path, run } from './build';
 import { World } from './world';
 
-const netAt = (w: World, x: number, y: number): number => extractNets(w.grid).netA[idx(w.grid, x, y)];
-
 function netsOf(w: World) {
   return extractNets(w.grid);
 }

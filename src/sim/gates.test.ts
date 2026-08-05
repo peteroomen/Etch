@@ -17,7 +17,6 @@ import {
 import { componentCount } from './world';
 import { S } from './kinds';
 
-const bits = (s: string) => [...s].map((c) => c === '1');
 const show = (rows: boolean[][]) => rows.map((r) => r.map((b) => (b ? 1 : 0)).join('')).join(' ');
 
 /** a,b sweep in counting order: 00 01 10 11 */

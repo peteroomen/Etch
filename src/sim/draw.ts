@@ -191,6 +191,6 @@ export function linkAllPins(world: World): void {
 }
 
 /** Erase along a stroke. */
-export function eraseStroke(world: World, points: Point[], remove: (x: number, y: number) => void): void {
+export function eraseStroke(points: Point[], remove: (x: number, y: number) => void): void {
   for (const p of points) remove(p.x, p.y);
 }

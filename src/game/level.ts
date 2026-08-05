@@ -261,3 +261,21 @@ export function stepTimeline(
   outNames.forEach((n, i) => (outputs[n] = rows.map((r) => r.out[i] ?? null)));
   return { steps: rows.length, inputs, outputs };
 }
+
+// ---------------------------------------------------------------- par
+
+const PAR_CACHE = new Map<string, Score>();
+
+/**
+ * A level's par, measured by playing its reference solution.
+ *
+ * Memoised because the menu asks for every level's par on every render, and
+ * the answer cannot change at runtime.
+ */
+export function parFor(level: Level, library: BlueprintLibrary): Score {
+  const hit = PAR_CACHE.get(level.id);
+  if (hit) return hit;
+  const score = verifyLevel(level, library).score;
+  PAR_CACHE.set(level.id, score);
+  return score;
+}

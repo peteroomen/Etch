@@ -11,10 +11,10 @@
  * is the chapter's lesson.
  */
 
-import { E, N, S } from '../sim/kinds';
+import { N, S } from '../sim/kinds';
 import { buf, inv, path, run } from '../sim/build';
-import { placeBlueprint, World } from '../sim/world';
-import { Level, truthTimeline, stepTimeline } from './level';
+import { placeBlueprint } from '../sim/world';
+import { Level, truthTimeline } from './level';
 
 const WIRE = ['wire'];
 const WIRE_X = ['wire', 'cross'];

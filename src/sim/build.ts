@@ -21,7 +21,6 @@ import {
   componentCount,
 } from './world';
 import { at, cellKind, idx } from './grid';
-import { setInput } from './world';
 
 export function board(w: number, h: number, library?: BlueprintLibrary): World {
   return createWorld(w, h, library);
