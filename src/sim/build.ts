@@ -21,6 +21,7 @@ import {
   componentCount,
 } from './world';
 import { at, cellKind, idx } from './grid';
+import { setInput } from './world';
 
 export function board(w: number, h: number, library?: BlueprintLibrary): World {
   return createWorld(w, h, library);
@@ -36,6 +37,11 @@ export function sink(world: World, name: string, x: number, y: number, rot: Dir 
 
 export function inv(world: World, x: number, y: number, rot: Dir = E): void {
   placeComponent(world, Kind.Inverter, x, y, rot);
+}
+
+/** BUF - an independent driven copy of whatever it reads. One tick. */
+export function buf(world: World, x: number, y: number, rot: Dir = E): void {
+  placeComponent(world, Kind.Delay, x, y, rot);
 }
 
 export function led(world: World, x: number, y: number, rot: Dir = E): void {
@@ -88,6 +94,57 @@ export function bp(world: World, id: string, x: number, y: number, rot: Dir = E)
 /** Connect a freshly placed component's pins to any wire already beside them. */
 export function link(world: World, x: number, y: number, ...dirs: Dir[]): void {
   for (const d of dirs) linkPin(world, x, y, d);
+}
+
+/**
+ * Surround a blueprint with a source on every input pin and a sink on every
+ * output pin, named after the pin.
+ *
+ * Saves hand-wiring fourteen pins to exercise a 4-bit adder, and it is the same
+ * shape a level's reference solution takes.
+ */
+export function harness(
+  world: World,
+  id: string,
+  x: number,
+  y: number,
+): { ins: string[]; outs: string[] } {
+  const bp = world.library.get(id);
+  if (!bp) throw new Error(`no blueprint "${id}"`);
+  placeBlueprint(world, id, x, y);
+  const ins: string[] = [];
+  const outs: string[] = [];
+  for (const pin of bp.pins) {
+    const px = x + pin.dx;
+    const py = y + pin.dy;
+    const west = pin.dir === W;
+    const wireX = west ? px - 1 : px + 1;
+    const padX = west ? px - 2 : px + 2;
+    drawStroke(world, [{ x: wireX, y: py }]);
+    if (pin.role === 'in') {
+      // the source must face the wire: east from the west side, west from the east
+      placeComponent(world, Kind.Source, padX, py, west ? E : W, pin.name);
+      ins.push(pin.name);
+    } else {
+      placeComponent(world, Kind.Sink, padX, py, west ? W : E, pin.name);
+      outs.push(pin.name);
+    }
+  }
+  return { ins, outs };
+}
+
+/** Read a group of output pins as an unsigned integer, LSB first. */
+export function readWord(out: boolean[], from = 0, width = out.length): number {
+  let n = 0;
+  for (let i = 0; i < width; i++) if (out[from + i]) n |= 1 << i;
+  return n;
+}
+
+/** Input bits for an unsigned integer, LSB first. */
+export function wordBits(value: number, width: number): boolean[] {
+  const bits: boolean[] = [];
+  for (let i = 0; i < width; i++) bits.push((value & (1 << i)) !== 0);
+  return bits;
 }
 
 export interface VectorResult {

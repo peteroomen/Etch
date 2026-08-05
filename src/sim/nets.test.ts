@@ -3,7 +3,7 @@ import { Kind, E, N, S, W } from './kinds';
 import { at, cellKind, cellMask, idx } from './grid';
 import { extractNets, netAtPin } from './nets';
 import { bresenham, drawRun, linkPin } from './draw';
-import { board, path, run } from './testkit';
+import { board, path, run } from './build';
 import { World } from './world';
 
 const netAt = (w: World, x: number, y: number): number => extractNets(w.grid).netA[idx(w.grid, x, y)];

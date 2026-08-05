@@ -13,7 +13,7 @@ import {
   src,
   truthTable,
   worstTicks,
-} from './testkit';
+} from './build';
 import { componentCount } from './world';
 import { S } from './kinds';
 
