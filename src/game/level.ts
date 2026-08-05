@@ -8,7 +8,7 @@
  * whether the circuit is combinational or has state.
  */
 
-import { Dir, E, Kind } from '../sim/kinds';
+import { Dir, E, KIND_DEFS, Kind } from '../sim/kinds';
 import { idx } from '../sim/grid';
 import { linkAllPins } from '../sim/draw';
 import { BlueprintLibrary } from '../sim/blueprint';
@@ -117,6 +117,61 @@ export interface Verification {
   /** set when a step never stopped changing */
   oscillates: boolean;
   score: Score;
+  /** why it probably failed, in the player's terms */
+  faults: Fault[];
+}
+
+export interface Fault {
+  kind: 'unconnected-input' | 'undriven-net' | 'unconnected-output';
+  /** where to look */
+  x: number;
+  y: number;
+  message: string;
+}
+
+/**
+ * The two mistakes that produce a constant output rather than a wrong one.
+ *
+ * An input pin joined to nothing reads Z, which poisons its gate to X. A net
+ * with no driver sits at its pull-down forever, so an inverter reading it
+ * drives HIGH forever. Both look like "the logic is wrong" and neither is, so
+ * the game should name them rather than leaving the player to guess.
+ */
+export function findFaults(world: World): Fault[] {
+  const faults: Fault[] = [];
+  for (const c of world.comps) {
+    if (c.instance >= 0) continue; // inside a blueprint, not the player's wiring
+    const def = KIND_DEFS[c.kind];
+    if (!def) continue;
+    c.inNets.forEach((net) => {
+      if (net < 0) {
+        faults.push({
+          kind: 'unconnected-input',
+          x: c.x,
+          y: c.y,
+          message: `${def.label} at ${c.x},${c.y} has an input joined to nothing`,
+        });
+      } else if (world.nets.drivers[net].length === 0) {
+        faults.push({
+          kind: 'undriven-net',
+          x: c.x,
+          y: c.y,
+          message: `${def.label} at ${c.x},${c.y} reads a net nothing drives — it will stay LOW`,
+        });
+      }
+    });
+    if (c.kind !== Kind.Sink && c.kind !== Kind.Led && def.pins.some((p) => p.role === 'out')) {
+      if (c.outNet < 0) {
+        faults.push({
+          kind: 'unconnected-output',
+          x: c.x,
+          y: c.y,
+          message: `${def.label} at ${c.x},${c.y} drives nothing`,
+        });
+      }
+    }
+  }
+  return faults;
 }
 
 /** Cells the player authored. Locked pins are the level's, not theirs. */
@@ -194,6 +249,7 @@ export function runTimeline(world: World, level: Level): Verification {
     firstFailure,
     oscillates,
     score: { components: componentCount(world), ticks: worst, area: areaUsed(world) },
+    faults: firstFailure === null ? [] : findFaults(world),
   };
 }
 
