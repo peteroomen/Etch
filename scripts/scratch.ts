@@ -1,7 +1,8 @@
 /** Scratch bench for designing sequential circuits before they become levels. */
 import { board, buf, inv, path, run, sink, src, render } from '../src/sim/build';
+import { N, S } from '../src/sim/kinds';
 import { linkAllPins } from '../src/sim/draw';
-import { readOutput, rebuild, reset, setInput, settle } from '../src/sim/world';
+import { componentCount, readOutput, rebuild, reset, setInput, settle } from '../src/sim/world';
 
 function trace(w: ReturnType<typeof board>, ins: string[], outs: string[], rows: number[][]) {
   linkAllPins(w);
@@ -9,10 +10,14 @@ function trace(w: ReturnType<typeof board>, ins: string[], outs: string[], rows:
   reset(w);
   for (let i = 0; i < ins.length; i++) setInput(w, ins[i], !!rows[0][i]);
   const first = settle(w, 256);
-  const lines: string[] = [`power-on settled=${first.settled} ticks=${first.ticks}`];
+  const lines: string[] = [
+    `power-on settled=${first.settled} ticks=${first.ticks}  components=${componentCount(w)}`,
+  ];
+  let worst = 0;
   for (const row of rows) {
     ins.forEach((n, i) => setInput(w, n, !!row[i]));
     const s = settle(w, 256);
+    if (s.settled) worst = Math.max(worst, s.ticks);
     const got = outs.map((n) => (readOutput(w, n) ? 1 : 0));
     lines.push(
       `  ${ins.map((n, i) => `${n}=${row[i]}`).join(' ')}  ->  ${outs
@@ -20,70 +25,70 @@ function trace(w: ReturnType<typeof board>, ins: string[], outs: string[], rows:
         .join(' ')}   ${s.settled ? `${s.ticks}t` : 'OSCILLATES'}`,
     );
   }
+  lines.push(`  worst = ${worst}t`);
   return lines.join('\n');
 }
 
-// ---------------------------------------------------------------- hold (BUF)
-{
-  const w = board(12, 7);
-  src(w, 'a', 0, 3);
-  // the buffer reads the very net it drives: once high, it keeps itself high
-  run(w, 1, 3, 4, 3);
-  buf(w, 5, 3);
-  path(w, [6, 3], [6, 1], [2, 1], [2, 3]); // output looped back into its own input
-  run(w, 6, 3, 10, 3);
-  sink(w, 'q', 11, 3);
-  console.log('HOLD via BUF');
-  console.log(trace(w, ['a'], ['q'], [[0], [1], [0], [0], [1], [0]]));
-  console.log(render(w));
+/**
+ * The D latch the superoptimiser found, built as a real board.
+ *
+ *   n2 = NOT(d) | NOT(en)        NAND: the set term, active low
+ *   n3 = NOT(n2) | NOT(n4)       Q
+ *   n4 = NOT(n3) | BUF(en)       Qbar, forced high while EN is high
+ *
+ * The trick is the BUF. While EN is high it holds Qbar up, so NOT(n4) lets go
+ * and Q is decided purely by the set term. When EN falls the BUF lets go and
+ * the cross-coupled pair keeps whatever it had. There is no separate reset
+ * term at all, which is why this is two parts cheaper than the textbook build.
+ *
+ * Rows are ordered so that nothing has to cross anything: spines are only as
+ * long as they need to be, and the risers pass the short ones by.
+ */
+function dLatch() {
+  const w = board(18, 11);
+  src(w, 'en', 0, 1);
+  src(w, 'd', 0, 5);
+
+  run(w, 1, 1, 16, 1); // n1 = en, long: it feeds an inverter and the buffer
+  run(w, 1, 5, 5, 5); // n0 = d, short: only one inverter reads it
+
+  inv(w, 4, 2, S); // NOT(en) -> n2
+  inv(w, 5, 4, N); // NOT(d)  -> n2
+  run(w, 3, 3, 10, 3); // n2
+
+  path(w, [10, 3], [10, 5]); // n2 down past the short d spine
+  inv(w, 10, 6, S); // NOT(n2) -> n3
+
+  run(w, 2, 7, 12, 7); // n3 = Q
+  inv(w, 12, 8, N); // NOT(n4) -> n3
+  inv(w, 2, 8, S); // NOT(n3) -> n4
+  run(w, 2, 9, 16, 9); // n4
+
+  path(w, [16, 1], [16, 4]); // en down the far right, past every spine
+  buf(w, 16, 5, S); // BUF(en) -> n4
+  path(w, [16, 6], [16, 9]);
+
+  sink(w, 'q', 13, 7);
+  return w;
 }
 
-// ---------------------------------------------------------------- hold (2 NOT)
-{
-  const w = board(12, 7);
-  src(w, 'a', 0, 3);
-  run(w, 1, 3, 4, 3); // net N
-  inv(w, 5, 3); // N -> M
-  run(w, 6, 3, 7, 3); // net M
-  inv(w, 8, 3); // M -> back into N
-  path(w, [9, 3], [9, 1], [2, 1], [2, 3]);
-  run(w, 6, 3, 10, 3);
-  sink(w, 'q', 11, 3);
-  console.log('\nHOLD via two inverters');
-  console.log(trace(w, ['a'], ['q'], [[0], [1], [0], [0], [1], [0]]));
-}
-
-// ---------------------------------------------------------------- SR latch
-{
-  const w = board(12, 7);
-  src(w, 's', 0, 1);
-  src(w, 'r', 0, 5);
-  run(w, 1, 1, 10, 1); // net B: S ∪ inv1 out
-  run(w, 1, 5, 9, 5); // net A: R ∪ inv2 out
-  path(w, [9, 5], [9, 4]);
-  inv(w, 9, 3, 0 as 0); // N
-  path(w, [9, 2], [9, 1]);
-  path(w, [1, 1], [1, 2]);
-  inv(w, 1, 3, 2 as 2); // S
-  path(w, [1, 4], [1, 5]);
-  sink(w, 'q', 11, 1);
-  console.log('\nSR LATCH');
-  console.log(
-    trace(
-      w,
-      ['s', 'r'],
-      ['q'],
-      [
-        [0, 1],
-        [0, 0],
-        [1, 0],
-        [0, 0],
-        [0, 1],
-        [0, 0],
-        [1, 0],
-        [0, 0],
-      ],
-    ),
-  );
-  console.log(render(w));
-}
+const w = dLatch();
+console.log('D LATCH — superoptimiser witness, predicted 6 parts / 2 ticks');
+console.log(
+  trace(
+    w,
+    ['d', 'en'],
+    ['q'],
+    [
+      [0, 1], // en high, d low: q low
+      [1, 1], // transparent, follows d up
+      [1, 0], // door shut, holds high
+      [0, 0], // d falls, q must not
+      [0, 1], // door open, follows down
+      [1, 0], // d rises while shut, q must not
+      [1, 1], // door open, follows up
+      [0, 0], // shut, holds
+    ],
+  ),
+);
+console.log(render(w));
