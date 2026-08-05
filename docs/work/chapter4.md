@@ -56,9 +56,14 @@ does at power-on, and it is visible on the scope.
 | **Gated (D latch)** | d, en | **impossible** (exhaustive ≤7) | **6p / 2t** | ≤ 6p / 2t | yes — 6 components, 2 ticks |
 
 Every "impossible" above is an exhaustive result, not a budget timeout.
-The one open cell is whether OR can beat 6 on the D latch; that search truncated
-at 300M states. OR reaches 6 by substituting `OR(en,en)` for the BUF, checked
-directly.
+
+The one open cell is whether **OR can beat 6 on the D latch**. Both the NOT+OR
+and the full-vocabulary searches truncated at 300M states without finding
+anything at ≤6, so neither confirms nor refutes a 5-part answer. What is settled
+is the upper bound: substituting `OR(en,en)` for the BUF gives 6p/2t, checked by
+direct simulation rather than left blank. Since NOT-only is impossible to 7 and
+NOT+BUF is exhaustively 6, the only thing a bigger budget could change is
+whether OR shaves one more part.
 
 ### Three findings worth the build
 
