@@ -252,3 +252,38 @@ variant sweep turned up:
 - **The probe reports.** Tapping a net names it, gives its value and its driver
   count, and outlines every cell that shares it — which is how a player answers
   "are these actually one wire" without guessing.
+
+### OR dominates BUF, and that is a live balance problem
+The sweep's headline finding. `OR(x, x)` is a buffer, so the gate does
+everything the copy does at the same price — one component, one tick — and more
+besides. Measured across every searchable level: Gater never scores worse than
+Copier, and on the half adder it wins 7 to 8.
+
+The half adder shows exactly why. Its sum needs `a ∨ b` while its carry still
+needs `a` and `b` intact:
+
+```
+OR   n2 = OR(a,b)                    1 component
+BUF  n4 = BUF(a) | BUF(b)            2 components
+```
+
+**BUF is priced per signal preserved; OR is priced per join.** They tie when a
+join needs one operand to survive, and OR wins whenever a join needs both. It is
+hard to construct a case where BUF wins.
+
+So the two tools are not really a choice — BUF is a strictly worse OR that
+happens to arrive first. Copy feels like it has two answers only because its
+palette offers both and its shape happens to tie.
+
+Options, none taken yet:
+
+1. **Make OR two cells** (1×2 rather than 1×1). Same component cost, more area —
+   BUF wins on area, OR wins on count, and the tension lands on the metric that
+   is currently doing the least work.
+2. **Price OR at two components.** Blunt, and it would make the early gates
+   dearer than they should be.
+3. **Accept it.** BUF is training wheels that OR supersedes, and the palette
+   gating keeps it relevant for one chapter.
+
+Option 1 is the recommendation: it is the only one that turns a redundancy into
+a trade-off, and it costs a single number in the kind table.

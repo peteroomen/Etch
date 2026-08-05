@@ -250,13 +250,20 @@ export function synthesise(opts: SynthOptions): SynthResult {
   return { frontier, all, exhaustive: !truncated, states };
 }
 
-/** Human-readable netlist, for putting a witness in a report. */
-export function describe(c: Circuit): string {
+/**
+ * Human-readable netlist, for putting a witness in a report.
+ *
+ * `inputNames` must be the level's own pin names in declaration order —
+ * labelling sources a, b, c positionally makes a correct witness look wrong
+ * whenever a level declares its inputs in another order.
+ */
+export function describe(c: Circuit, inputNames?: string[]): string {
   const name = (i: number) => `n${i}`;
+  const src = (s: number) => inputNames?.[s] ?? `in${s}`;
   return c.nets
     .map((net, i) => {
       const drivers = [
-        ...net.sources.map((s) => String.fromCharCode(97 + s)),
+        ...net.sources.map(src),
         ...net.parts.map((p) =>
           p.kind === 'or'
             ? `OR(${name(p.ins[0])},${name(p.ins[1])})`

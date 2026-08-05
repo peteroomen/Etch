@@ -52,4 +52,12 @@ describe('the superoptimiser agrees with the substrate', () => {
     const r = best([AND], ['not'], 5);
     expect(show(r.frontier[0].circuit)).toContain('NOT');
   });
+
+  it('labels sources with the level’s own pin names, not by position', () => {
+    const r = best([NOR], ['not'], 4);
+    const text = show(r.frontier[0].circuit, ['sel', 'clr']);
+    expect(text).toContain('sel');
+    expect(text).toContain('clr');
+    expect(text).not.toMatch(/\ba\b/);
+  });
 });

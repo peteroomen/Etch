@@ -75,6 +75,21 @@ describe('the tools a level teaches actually pay for themselves', () => {
     expect(copier.best!.parts).toBe(gater.best!.parts);
   });
 
+  it('OR dominates BUF: anything a copy does, a gate does for the same price', () => {
+    // OR(x, x) IS a buffer, so the gate can do everything the copy can and more.
+    // Measured across every searchable level rather than argued from the shape
+    // of the primitives. If this ever stops holding, the balance changed.
+    const worse: string[] = [];
+    for (const level of searchable) {
+      const a = analyseLevel(level);
+      const copier = a.results.find((r) => r.persona === 'copier');
+      const gater = a.results.find((r) => r.persona === 'gater');
+      if (!copier?.solved || !gater?.solved) continue;
+      if (gater.best!.parts > copier.best!.parts) worse.push(a.id);
+    }
+    expect(worse).toEqual([]);
+  });
+
   it('but they are not interchangeable everywhere — the half adder prefers the gate', () => {
     const a = analyse('half-adder');
     const copier = a.results.find((r) => r.persona === 'copier')!.best!;

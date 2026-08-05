@@ -54,22 +54,47 @@ one.
 
 **One dominant answer:** Continuity, Invert, Fan-out, Either, Crossing, Neither, Not both, Both, Copy, One or other
 
+## BUF against OR
+
+Both buy the same thing — one extra use of a signal — and both cost one
+component and one tick. BUF pays on the **signal** side, manufacturing a
+second independent copy so a destructive merge stays affordable. OR pays on
+the **join** side, manufacturing a join that reads instead of consuming.
+
+They tie wherever a signal is simply used twice. They come apart wherever an
+intermediate result is shared between outputs, because OR lets one value
+serve two consumers while BUF has to make another of it.
+
+| level | Copier (BUF) | Gater (OR) | winner |
+|---|---|---|---|
+| Continuity | 0p / 0t | 0p / 0t | tie |
+| Invert | 1p / 1t | 1p / 1t | tie |
+| Fan-out | 0p / 0t | 0p / 0t | tie |
+| Either | 0p / 0t | 0p / 0t | tie |
+| Crossing | 0p / 0t | 0p / 0t | tie |
+| Neither | 1p / 1t | 1p / 1t | tie |
+| Not both | 2p / 1t | 2p / 1t | tie |
+| Both | 3p / 2t | 3p / 2t | tie |
+| Copy | 4p / 2t | 4p / 2t | tie |
+| One or other | 6p / 2t | 6p / 2t | tie |
+| Half adder | 8p / 3t | 7p / 3t | **OR** |
+
 ## Witnesses
 
 The cheapest circuit the search found, as a netlist. `nX` are nets; drivers
 sharing a net are a free merge.
 
-- **Continuity** (0p / 0t) — `n0 = a`
-- **Invert** (1p / 1t) — `n0 = a; n1 = NOT(n0)`
-- **Fan-out** (0p / 0t) — `n0 = a`
-- **Either** (0p / 0t) — `n0 = a | b`
-- **Crossing** (0p / 0t) — `n0 = b; n1 = a`
-- **Neither** (1p / 1t) — `n0 = a | b; n1 = NOT(n0)`
-- **Not both** (2p / 1t) — `n0 = b; n1 = a; n2 = NOT(n0) | NOT(n1)`
-- **Both** (3p / 2t) — `n0 = b; n1 = a; n2 = NOT(n0) | NOT(n1); n3 = NOT(n2)`
-- **Copy** (4p / 2t) — `n0 = c; n1 = b; n2 = OR(n0,n1); n3 = NOT(n2); n4 = a; n5 = OR(n1,n4); n6 = NOT(n5)`
-- **One or other** (6p / 2t) — `n0 = b; n1 = a; n2 = NOT(n0) | BUF(n1); n3 = NOT(n1) | BUF(n0); n4 = NOT(n2) | NOT(n3)`
-- **Half adder** (7p / 3t) — `n0 = b; n1 = a; n2 = OR(n0,n1); n3 = NOT(n0) | NOT(n1); n4 = NOT(n3); n5 = NOT(n2) | NOT(n3); n6 = NOT(n5)`
+- **Continuity** (0p / 0t) — `n0 = a`  →  *q=n0*
+- **Invert** (1p / 1t) — `n0 = a; n1 = NOT(n0)`  →  *q=n1*
+- **Fan-out** (0p / 0t) — `n0 = a`  →  *q1=n0, q2=n0, q3=n0*
+- **Either** (0p / 0t) — `n0 = a | b`  →  *q=n0*
+- **Crossing** (0p / 0t) — `n0 = b; n1 = a`  →  *q1=n1, q2=n0*
+- **Neither** (1p / 1t) — `n0 = a | b; n1 = NOT(n0)`  →  *q=n1*
+- **Not both** (2p / 1t) — `n0 = b; n1 = a; n2 = NOT(n0) | NOT(n1)`  →  *q=n2*
+- **Both** (3p / 2t) — `n0 = b; n1 = a; n2 = NOT(n0) | NOT(n1); n3 = NOT(n2)`  →  *q=n3*
+- **Copy** (4p / 2t) — `n0 = c; n1 = a; n2 = OR(n0,n1); n3 = NOT(n2); n4 = b; n5 = OR(n1,n4); n6 = NOT(n5)`  →  *q1=n6, q2=n3*
+- **One or other** (6p / 2t) — `n0 = b; n1 = a; n2 = NOT(n0) | BUF(n1); n3 = NOT(n1) | BUF(n0); n4 = NOT(n2) | NOT(n3)`  →  *q=n4*
+- **Half adder** (7p / 3t) — `n0 = b; n1 = a; n2 = OR(n0,n1); n3 = NOT(n0) | NOT(n1); n4 = NOT(n3); n5 = NOT(n2) | NOT(n3); n6 = NOT(n5)`  →  *sum=n6, carry=n4*
 
 ## What the model cannot see
 

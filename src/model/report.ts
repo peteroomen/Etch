@@ -91,11 +91,51 @@ export function buildReport(levels: Level[]): string {
   }
   out.push(`**One dominant answer:** ${flat.map((a) => a.title).join(', ') || 'none'}`, '');
 
+  out.push('## BUF against OR', '');
+  out.push(
+    'Both buy the same thing — one extra use of a signal — and both cost one',
+    'component and one tick. BUF pays on the **signal** side, manufacturing a',
+    'second independent copy so a destructive merge stays affordable. OR pays on',
+    'the **join** side, manufacturing a join that reads instead of consuming.',
+    '',
+    'They tie wherever a signal is simply used twice. They come apart wherever an',
+    'intermediate result is shared between outputs, because OR lets one value',
+    'serve two consumers while BUF has to make another of it.',
+    '',
+    '| level | Copier (BUF) | Gater (OR) | winner |',
+    '|---|---|---|---|',
+  );
+  for (const a of searched) {
+    const c = a.results.find((r) => r.persona === 'copier');
+    const gg = a.results.find((r) => r.persona === 'gater');
+    if (!c?.solved || !gg?.solved) continue;
+    const winner =
+      c.best!.parts === gg.best!.parts
+        ? c.best!.depth === gg.best!.depth
+          ? 'tie'
+          : c.best!.depth < gg.best!.depth
+            ? '**BUF** (shallower)'
+            : '**OR** (shallower)'
+        : c.best!.parts < gg.best!.parts
+          ? '**BUF**'
+          : '**OR**';
+    out.push(
+      `| ${a.title} | ${c.best!.parts}p / ${c.best!.depth}t | ${gg.best!.parts}p / ${gg.best!.depth}t | ${winner} |`,
+    );
+  }
+  out.push('');
+
   out.push('## Witnesses', '');
   out.push('The cheapest circuit the search found, as a netlist. `nX` are nets; drivers', 'sharing a net are a free merge.', '');
   for (const a of searched) {
     if (!a.witness) continue;
-    out.push(`- **${a.title}** (${a.witness.parts}p / ${a.witness.depth}t) — \`${showCircuit(a.witness.circuit)}\``);
+    const outs = a.witness.circuit.outputs
+      .map((netIdx, i) => `${a.targets.outputs[i]}=n${netIdx}`)
+      .join(', ');
+    out.push(
+      `- **${a.title}** (${a.witness.parts}p / ${a.witness.depth}t) — ` +
+        `\`${showCircuit(a.witness.circuit, a.targets.inputs)}\`  →  *${outs}*`,
+    );
   }
   out.push('');
 
