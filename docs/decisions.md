@@ -148,3 +148,45 @@ therefore has to union the two host nets it faces — which is correct and
 visible: the two wires feeding a NOR light as one node, showing the player that
 the gate consumed them. Flattening runs union-find over host nets before the
 net table is built.
+
+### Non-destructive joining is added alongside, not instead
+Revisiting the flagged risk. Replacing wired-OR with a 1-tick OR component was
+measured, and it makes the whole game **more** expensive, not less:
+
+| | wired-OR | OR as the only join |
+|---|---|---|
+| OR | 0 comp, 0 tick | 1, 1 |
+| NOR | 1, 1 | 2, 2 |
+| NAND | 2, 1 | 3, 2 |
+| AND | 3, 2 | 4, 3 |
+| XOR | 6, 2 | 7, 4 |
+| 4-bit adder | 72 | 88 |
+
+Free OR is worth a great deal, and paying a tick of depth per gate to get the
+textbook XOR formula back is a bad trade. (An earlier note claiming XOR would
+drop to three components was wrong — that would need primitive AND and OR, a
+different change entirely.)
+
+So both exist. **Merging stays free and destructive. The OR component costs one
+component and one tick and reads its inputs instead of consuming them.** Neither
+dominates: merge when you are finished with the operands, gate when you are not.
+
+The Copy level now has two solutions at identical cost — two BUFs or two ORs,
+both four components and two ticks — which is a better lesson than a single
+forced answer. The wall becomes a priced choice.
+
+OR is 1x1 and rotatable, with inputs on opposite faces and the output on a
+third, because a gate whose operands are interchangeable should not favour one
+of them geometrically.
+
+### Wire arms are drawn from connectivity, not from the authored mask
+The "legs" bug. A junction is stored with no mask — electrically it accepts from
+every side — so drawing it from its mask put a stub on all four faces, including
+ones joined to nothing. Crossovers had the same fault, and so did wire pointing
+at a component with no pin on that face.
+
+The renderer now asks, per direction, whether anything at the other end actually
+faces back: wire-family neighbours by their effective mask, components and
+blueprint instances by their pin list. A plain wire keeps arms running into
+empty board — the player drew those and a dangling end should look dangling —
+and loses only the ones aimed at something that does not connect.

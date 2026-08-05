@@ -8,6 +8,7 @@ import {
   inv,
   path,
   run,
+  or,
   runVectors,
   sink,
   src,
@@ -15,7 +16,7 @@ import {
   worstTicks,
 } from './build';
 import { componentCount } from './world';
-import { S } from './kinds';
+import { N, S } from './kinds';
 
 const show = (rows: boolean[][]) => rows.map((r) => r.map((b) => (b ? 1 : 0)).join('')).join(' ');
 
@@ -185,5 +186,58 @@ describe('the blueprint library', () => {
     // q1 = a AND b, q2 = c AND d, independently
     expect(show(rows)).toBe('00 00 00 01 00 00 00 01 00 00 00 01 10 10 10 11');
     expect(componentCount(w)).toBe(6);
+  });
+});
+
+describe('the OR component — joining without consuming', () => {
+  /**
+   * The priced alternative to merging nets. Merging is free but destroys its
+   * operands; this costs a component and a tick and leaves them intact. Both
+   * stay worth using, so the constraint becomes a choice rather than a wall.
+   */
+  const orBoard = () => {
+    const w = board(10, 8);
+    src(w, 'a', 0, 1);
+    run(w, 1, 1, 5, 1);
+    src(w, 'b', 0, 5);
+    run(w, 1, 5, 5, 5);
+    path(w, [5, 1], [5, 2]); // down into the OR's north input
+    path(w, [5, 5], [5, 4]); // up into its south input
+    or(w, 5, 3);
+    run(w, 6, 3, 7, 3);
+    sink(w, 'q', 8, 3);
+    // and the operands, still readable on their own
+    sink(w, 'qa', 3, 0, N);
+    sink(w, 'qb', 3, 6, S);
+    return w;
+  };
+
+  it('is OR, at one component and one tick', () => {
+    const w = orBoard();
+    const results = runVectors(w, ['a', 'b'], ['q'], AB);
+    expect(show(results.map((r) => r.out))).toBe('0 1 1 1');
+    expect(componentCount(w)).toBe(1);
+    expect(worstTicks(results)).toBe(1);
+  });
+
+  it('leaves both operands intact, which a merge would not', () => {
+    const w = orBoard();
+    const rows = truthTable(w, ['a', 'b'], ['q', 'qa', 'qb']);
+    // q is the OR; a and b still read as themselves
+    expect(show(rows)).toBe('000 101 110 111');
+    expect(w.map.netA[1 + 1 * w.grid.w]).not.toBe(w.map.netA[1 + 5 * w.grid.w]);
+  });
+
+  it('reports an unconnected input rather than guessing', () => {
+    const w = board(10, 8);
+    src(w, 'a', 0, 1);
+    run(w, 1, 1, 5, 1);
+    path(w, [5, 1], [5, 2]);
+    or(w, 5, 3); // south input left dangling
+    run(w, 6, 3, 7, 3);
+    sink(w, 'q', 8, 3);
+    const results = runVectors(w, ['a'], ['q'], [[false], [true]]);
+    // X is not high, so the output never asserts — and the board shows it red
+    expect(show(results.map((r) => r.out))).toBe('0 0');
   });
 });

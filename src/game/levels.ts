@@ -233,7 +233,8 @@ const copy: Level = {
   brief: [
     'Q1 is NOR of A and B. Q2 is NOR of A and C.',
     'Both need A. But joining A into the first NOR consumes it — A and B become one node, and there is no A left to give the second.',
-    'BUF drives a new node with the value it reads. One component, one tick, and an independent copy.',
+    'Two ways out. BUF drives a new node with the value it reads: one component, one tick, an independent copy. Or the OR gate, which reads both its inputs rather than merging them, at the same price.',
+    'Here they cost exactly the same. They will not always.',
   ],
   grid: { w: 16, h: 11 },
   inputs: [
@@ -245,7 +246,7 @@ const copy: Level = {
     { name: 'q1', x: 15, y: 3 },
     { name: 'q2', x: 15, y: 7 },
   ],
-  palette: [...WIRE_X, 'not', 'buf'],
+  palette: [...WIRE_X, 'not', 'buf', 'or'],
   timeline: truthTimeline(['a', 'b', 'c'], ['q1', 'q2'], ([a, b, c]) => [!(a || b), !(a || c)]),
   reference: (w) => {
     // A's own net is never joined to anything — both merges use a copy, which
@@ -285,7 +286,7 @@ const oneOrOther: Level = {
     { name: 'b', x: 0, y: 10 },
   ],
   outputs: [{ name: 'q', x: 17, y: 6 }],
-  palette: [...WIRE_X, 'not', 'buf'],
+  palette: [...WIRE_X, 'not', 'buf', 'or'],
   unlocks: 'xor2',
   timeline: truthTimeline(['a', 'b'], ['q'], ([a, b]) => [a !== b]),
   reference: (w) => {
@@ -335,7 +336,7 @@ const halfAdder: Level = {
     { name: 'sum', x: 15, y: 4 },
     { name: 'carry', x: 15, y: 7 },
   ],
-  palette: [...WIRE_X, 'not', 'buf', 'nor2', 'nand2', 'and2', 'xor2'],
+  palette: [...WIRE_X, 'not', 'buf', 'or', 'nor2', 'nand2', 'and2', 'xor2'],
   unlocks: 'halfadder',
   timeline: truthTimeline(['a', 'b'], ['sum', 'carry'], ([a, b]) => [a !== b, a && b]),
   reference: (w) => {
@@ -371,7 +372,7 @@ const fullAdder: Level = {
     { name: 'sum', x: 19, y: 3 },
     { name: 'cout', x: 19, y: 7 },
   ],
-  palette: [...WIRE_X, 'not', 'buf', 'and2', 'xor2', 'halfadder'],
+  palette: [...WIRE_X, 'not', 'buf', 'or', 'and2', 'xor2', 'halfadder'],
   unlocks: 'fulladder',
   timeline: truthTimeline(['a', 'b', 'cin'], ['sum', 'cout'], ([a, b, c]) => {
     const n = (a ? 1 : 0) + (b ? 1 : 0) + (c ? 1 : 0);

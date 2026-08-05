@@ -166,7 +166,7 @@ export function App() {
         </div>
       )}
 
-      <Palette palette={level ? level.palette : ['wire', 'junction', 'cross', 'not', 'buf', 'led', 'switch', 'clock']} onVerify={verify} />
+      <Palette palette={level ? level.palette : ['wire', 'junction', 'cross', 'not', 'buf', 'or', 'led', 'switch', 'clock']} onVerify={verify} />
 
       {level && showBrief && (
         <div className="sheet" role="dialog" aria-label={level.title}>

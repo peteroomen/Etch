@@ -393,6 +393,14 @@ function evaluate(c: Component, nets: NetTable, ticks: number, clockPeriod: numb
       if (v === LO) return Z;
       return X;
     }
+    case Kind.Or: {
+      // Reads both inputs rather than consuming them — the priced alternative
+      // to merging nets, which is free but destroys its operands.
+      const a = netValue(nets, c.inNets[0]);
+      const b = netValue(nets, c.inNets[1]);
+      if (a === Z || b === Z || a === X || b === X) return X;
+      return a === HI || b === HI ? HI : Z;
+    }
     case Kind.Source:
     case Kind.Switch:
       return c.state ? HI : Z;
@@ -561,7 +569,7 @@ export function restore(world: World, snap: Snapshot): void {
 export function componentCount(world: World): number {
   let n = 0;
   for (const c of world.comps) {
-    if (c.kind === Kind.Inverter || c.kind === Kind.Delay) n++;
+    if (c.kind === Kind.Inverter || c.kind === Kind.Delay || c.kind === Kind.Or) n++;
   }
   return n;
 }

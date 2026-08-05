@@ -10,8 +10,8 @@
  * O(board).
  */
 
-import { Dir, E, Kind, N, S, W, kindDef, worldPins } from '../sim/kinds';
-import { at, cellKind, cellMask, cellRot, idx, inBounds } from '../sim/grid';
+import { Dir, E, Kind, N, S, W, isWireFamily, kindDef, maskBit, opposite, worldPins } from '../sim/kinds';
+import { at, cellKind, cellMask, cellRot, effectiveMask, idx, inBounds } from '../sim/grid';
 import { HI, LO, V, X, Z } from '../sim/values';
 import { World } from '../sim/world';
 import { BODY_INSET, T, TRACE } from './tokens';
@@ -118,39 +118,115 @@ function withGlow(ctx: CanvasRenderingContext2D, lit: boolean, size: number, dra
 
 // ---------------------------------------------------------------- pieces
 
+/** Step one cell in a direction. */
+function step(x: number, y: number, d: Dir): { x: number; y: number } {
+  return {
+    x: x + (d === E ? 1 : d === W ? -1 : 0),
+    y: y + (d === S ? 1 : d === N ? -1 : 0),
+  };
+}
+
+/** Does whatever sits in the neighbouring cell present a pin facing back? */
+function neighbourFacesBack(world: World, nx: number, ny: number, back: Dir): boolean {
+  const g = world.grid;
+  const nc = at(g, nx, ny);
+  const nk = cellKind(nc);
+  if (nk === Kind.Empty) return false;
+  if (isWireFamily(nk)) return (effectiveMask(nc) & maskBit(back)) !== 0;
+  if (nk === Kind.Blueprint) {
+    const instance = g.owner[idx(g, nx, ny)];
+    const place = world.placements[instance];
+    const bp = place && world.library.get(place.id);
+    if (!bp) return false;
+    return bp.pins.some(
+      (pin) => place.x + pin.dx === nx && place.y + pin.dy === ny && pin.dir === back,
+    );
+  }
+  return worldPins(nk, nx, ny, cellRot(nc)).some((pin) => pin.dir === back);
+}
+
+/**
+ * Which arms of a wire cell should actually be drawn.
+ *
+ * The authored mask is not enough. A junction is stored with no mask at all —
+ * electrically it accepts from every side — so drawing it from the mask would
+ * put a stub on every face, including ones joined to nothing. That is what
+ * legs are. An arm is drawn when there is something at the other end of it.
+ *
+ * A plain wire keeps arms that run into empty board, because the player drew
+ * them and a dangling end should look dangling; it only loses arms that point
+ * at a component with no pin on that face.
+ */
+function visualMask(world: World, x: number, y: number): number {
+  const g = world.grid;
+  const cell = at(g, x, y);
+  const kind = cellKind(cell);
+  const owned = kind === Kind.Wire ? cellMask(cell) : 0b1111;
+  let out = 0;
+
+  for (let d = 0 as Dir; d < 4; d++) {
+    if ((owned & maskBit(d)) === 0) continue;
+    const n = step(x, y, d);
+    if (!inBounds(g, n.x, n.y)) continue;
+    const connects = neighbourFacesBack(world, n.x, n.y, opposite(d));
+    if (connects) {
+      out |= maskBit(d);
+    } else if (kind === Kind.Wire && cellKind(at(g, n.x, n.y)) === Kind.Empty) {
+      out |= maskBit(d); // a stub the player drew, ending in open board
+    }
+  }
+  return out;
+}
+
 function drawWireCell(ctx: CanvasRenderingContext2D, world: World, x: number, y: number, vp: Viewport) {
   const S_ = vp.cell;
   const t = Math.max(3, Math.round(S_ * TRACE));
   const i = idx(world.grid, x, y);
-  const cell = world.grid.cells[i];
-  const kind = cellKind(cell);
+  const kind = cellKind(world.grid.cells[i]);
+  const mask = visualMask(world, x, y);
 
   if (kind === Kind.Cross) {
     // north-south passes under; east-west is drawn over it with a board-coloured
     // gap, which reads instantly as "these do not touch"
+    const vMask = mask & (maskBit(N) | maskBit(S));
+    const hMask = mask & (maskBit(E) | maskBit(W));
     const vVal = netValueAt(world, i, 1);
     const hVal = netValueAt(world, i, 0);
-    withGlow(ctx, vVal === HI, S_, () => {
-      ctx.fillStyle = traceColor(vVal);
-      ctx.fillRect(S_ / 2 - t / 2, 0, t, S_);
-    });
-    ctx.fillStyle = T.board;
-    ctx.fillRect(0, S_ / 2 - t / 2 - Math.max(2, S_ * 0.07), S_, t + Math.max(4, S_ * 0.14));
-    withGlow(ctx, hVal === HI, S_, () => {
-      ctx.fillStyle = traceColor(hVal);
-      ctx.fillRect(0, S_ / 2 - t / 2, S_, t);
-    });
+
+    if (vMask) {
+      withGlow(ctx, vVal === HI, S_, () => {
+        ctx.fillStyle = traceColor(vVal);
+        for (const d of [N, S] as Dir[]) {
+          if (vMask & maskBit(d)) {
+            const [rx, ry, rw, rh] = armRect(d, S_, t);
+            ctx.fillRect(rx, ry, rw, rh);
+          }
+        }
+      });
+    }
+    if (hMask) {
+      if (vMask) {
+        ctx.fillStyle = T.board;
+        ctx.fillRect(0, S_ / 2 - t / 2 - Math.max(2, S_ * 0.07), S_, t + Math.max(4, S_ * 0.14));
+      }
+      withGlow(ctx, hVal === HI, S_, () => {
+        ctx.fillStyle = traceColor(hVal);
+        for (const d of [E, W] as Dir[]) {
+          if (hMask & maskBit(d)) {
+            const [rx, ry, rw, rh] = armRect(d, S_, t);
+            ctx.fillRect(rx, ry, rw, rh);
+          }
+        }
+      });
+    }
     return;
   }
 
   const v = netValueAt(world, i, 0);
-  const col = traceColor(v);
-  const mask = kind === Kind.Junction ? 0b1111 : cellMask(cell);
-
   withGlow(ctx, v === HI, S_, () => {
-    ctx.fillStyle = col;
+    ctx.fillStyle = traceColor(v);
     for (let d = 0 as Dir; d < 4; d++) {
-      if (mask & (1 << d)) {
+      if (mask & maskBit(d)) {
         const [rx, ry, rw, rh] = armRect(d, S_, t);
         ctx.fillRect(rx, ry, rw, rh);
       }
@@ -177,7 +253,16 @@ function drawGlyph(ctx: CanvasRenderingContext2D, kind: Kind, S_: number, rot: D
     ctx.shadowBlur = S_ * 0.35;
   }
   const r = S_ * 0.23;
-  if (kind === Kind.Inverter || kind === Kind.Delay) {
+  if (kind === Kind.Or) {
+    // the standard OR shield: concave back, so it never reads as a buffer
+    ctx.beginPath();
+    ctx.moveTo(-r, -r);
+    ctx.quadraticCurveTo(-r * 0.3, 0, -r, r);
+    ctx.quadraticCurveTo(r * 0.35, r * 0.9, r * 1.05, 0);
+    ctx.quadraticCurveTo(r * 0.35, -r * 0.9, -r, -r);
+    ctx.closePath();
+    ctx.fill();
+  } else if (kind === Kind.Inverter || kind === Kind.Delay) {
     ctx.beginPath();
     ctx.moveTo(-r, -r);
     ctx.lineTo(r * 0.4, 0);

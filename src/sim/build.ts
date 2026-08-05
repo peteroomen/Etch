@@ -38,6 +38,11 @@ export function inv(world: World, x: number, y: number, rot: Dir = E): void {
   placeComponent(world, Kind.Inverter, x, y, rot);
 }
 
+/** OR - reads two nets without merging them. One component, one tick. */
+export function or(world: World, x: number, y: number, rot: Dir = E): void {
+  placeComponent(world, Kind.Or, x, y, rot);
+}
+
 /** BUF - an independent driven copy of whatever it reads. One tick. */
 export function buf(world: World, x: number, y: number, rot: Dir = E): void {
   placeComponent(world, Kind.Delay, x, y, rot);
@@ -230,6 +235,7 @@ export function render(world: World): string {
       [Kind.Junction]: 'o',
       [Kind.Cross]: 'x',
       [Kind.Inverter]: '>',
+      [Kind.Or]: 'v',
       [Kind.Delay]: 'd',
       [Kind.Source]: 'I',
       [Kind.Sink]: 'O',

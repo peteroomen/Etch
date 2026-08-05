@@ -61,6 +61,7 @@ export enum Kind {
   Nixie = 12,
   // a placed blueprint instance — occupies cells, flattens to primitives
   Blueprint = 13,
+  Or = 14,
 }
 
 export const WIRE_FAMILY = new Set<Kind>([Kind.Wire, Kind.Junction, Kind.Cross]);
@@ -71,7 +72,7 @@ export function isWireFamily(k: Kind): boolean {
 
 /** Components that hold a tick of delay and drive an output net. */
 export function isActive(k: Kind): boolean {
-  return k === Kind.Inverter || k === Kind.Delay;
+  return k === Kind.Inverter || k === Kind.Delay || k === Kind.Or;
 }
 
 export interface PinDef {
@@ -131,6 +132,16 @@ export const KIND_DEFS: Partial<Record<Kind, KindDef>> = {
     h: 1,
     rotatable: true,
     pins: [io('in', W, 'in'), io('out', E, 'out')],
+  },
+  [Kind.Or]: {
+    kind: Kind.Or,
+    label: 'OR',
+    w: 1,
+    h: 1,
+    rotatable: true,
+    // Inputs on opposite faces, output on a third: symmetric, because a gate
+    // whose operands are interchangeable should not favour one of them.
+    pins: [io('a', N, 'in'), io('b', S, 'in'), io('q', E, 'out')],
   },
   [Kind.Delay]: {
     kind: Kind.Delay,

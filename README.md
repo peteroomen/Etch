@@ -34,10 +34,14 @@ Two things fall out of that, and they are the game:
 driver pulls it high. No component, no tick. Wired-OR isn't a special case in the
 resolver, it is just what the resolver does when nothing can pull low.
 
-**Joining consumes.** The only way to OR two signals is to merge their nets, and
-a merge destroys the operands — they stop existing separately. Fan-*out* is free;
-any number of components can read a node. Fan-*in* is what costs. A signal that
-must feed two different merges needs an independent driven copy for each.
+**Joining consumes.** Merging two nets destroys the operands — they stop existing
+separately. Fan-*out* is free; any number of components can read a node. Fan-*in*
+is what costs.
+
+There are two ways to pay. **BUF** makes an independent driven copy of a signal.
+The **OR component** reads both its inputs instead of merging them. Both cost one
+component and one tick, and neither dominates the free merge — so joining is a
+priced choice rather than a dead end.
 
 The rule of thumb: **merge inverter outputs, never source nets.**
 
@@ -54,9 +58,10 @@ NOR cheapest, AND dearest — the exact inverse of CMOS intuition, because gate
 cost is a property of the substrate rather than of the truth table. Chapter 2 is
 ordered by ascending cost so the player discovers that rather than being told.
 
-And `XOR = (a∨b) ∧ ¬(a∧b)` is **not constructible as written**: computing `a∨b`
-destroys the `a` and `b` that the NAND still needs. That is why chapter 2 has a
-level about BUF.
+And `XOR = (a∨b) ∧ ¬(a∧b)` is **not constructible with merges alone**: computing
+`a∨b` destroys the `a` and `b` that the NAND still needs. You either buffer a copy
+or spend an OR gate. That is what chapter 2's Copy level is about, and it has two
+solutions at exactly the same price.
 
 ## Scoring
 

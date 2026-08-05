@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { LIBRARY } from './blueprints';
 import { LEVELS } from './levels';
+import { BUILT_IN } from './palette';
 import { createLevelWorld, inputNames, outputNames, runTimeline, verifyLevel } from './level';
 
 /**
@@ -63,7 +64,7 @@ describe('every level is solvable, and par comes from the solution', () => {
     const granted = new Set<string>();
     for (const level of LEVELS) {
       for (const item of level.palette) {
-        const isTool = ['wire', 'cross', 'junction', 'not', 'buf', 'led'].includes(item);
+        const isTool = BUILT_IN.includes(item);
         expect({ level: level.id, item, ok: isTool || granted.has(item) }).toEqual({
           level: level.id,
           item,
