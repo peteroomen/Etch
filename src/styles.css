@@ -248,6 +248,38 @@ button:focus-visible {
   color: var(--dim);
 }
 
+/* ---------------------------------------------------------------- dev */
+/* Deliberately unstyled-looking: nothing here should read as part of the game. */
+
+.devbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: #2a1f0a;
+  border-bottom: 1px solid #5c4410;
+  font-size: 11px;
+  color: var(--amber);
+}
+.devbar select,
+.devbar button {
+  font: inherit;
+  font-size: 11px;
+  color: var(--amber);
+  background: #14100a;
+  border: 1px solid #5c4410;
+  border-radius: 3px;
+  padding: 3px 6px;
+}
+.devbar select {
+  flex: 1;
+  min-width: 0;
+}
+.devbar button:disabled {
+  opacity: 0.4;
+}
+
 .board-wrap {
   flex: 1 1 auto;
   min-height: 0;

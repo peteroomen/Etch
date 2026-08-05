@@ -3,6 +3,7 @@ import { parFor } from '../game/level';
 import { LIBRARY } from '../game/blueprints';
 import { loadLevel, loadSandbox } from '../state/session';
 import { useUI } from '../state/store';
+import { DEV } from '../state/dev';
 
 export function LevelSelect() {
   const solved = useUI((s) => s.solved);
@@ -15,7 +16,7 @@ export function LevelSelect() {
   return (
     <div className="menu">
       <header className="menu-head">
-        <div className="eyebrow">ETCH · REV A</div>
+        <div className="eyebrow">ETCH · REV A{DEV ? ' · DEV' : ''}</div>
         <h1>Build a computer out of inverters.</h1>
         <p>
           There is no AND gate here until you make one. Wires join instantly; only components cost
@@ -30,7 +31,7 @@ export function LevelSelect() {
             {LEVELS.filter((l) => l.chapter === ch).map((level) => {
               const idx = LEVELS.indexOf(level);
               const best = solved[level.id];
-              const locked = idx > firstUnsolved && firstUnsolved !== -1;
+              const locked = !DEV && idx > firstUnsolved && firstUnsolved !== -1;
               const par = parFor(level, LIBRARY);
               return (
                 <li key={level.id}>

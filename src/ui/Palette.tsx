@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { resolvePalette } from '../game/palette';
 import { canRedo, canUndo, clearBoard, redo, sessionRev, subscribeSession, undo } from '../state/session';
 import { useUI } from '../state/store';
+import { DEV } from '../state/dev';
 
 const DIR_ARROW = ['↑', '→', '↓', '←'];
 
@@ -42,7 +43,7 @@ export function Palette({ palette, onVerify, onStep }: Props) {
   useSyncExternalStore(subscribeSession, sessionRev, sessionRev);
 
   const items = resolvePalette(palette).filter(
-    (i) => !i.blueprint || unlocked.includes(i.blueprint),
+    (i) => !i.blueprint || DEV || unlocked.includes(i.blueprint),
   );
   const selected = items.find((i) => i.id === tool);
 

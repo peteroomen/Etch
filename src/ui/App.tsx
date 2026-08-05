@@ -9,6 +9,8 @@ import { Board } from './Board';
 import { Palette } from './Palette';
 import { Scope } from './Scope';
 import { LevelSelect } from './LevelSelect';
+import { DevBar } from './DevBar';
+import { DEV } from '../state/dev';
 
 /**
  * The free board gets everything, including the switches and lamps that are its
@@ -191,6 +193,8 @@ export function App() {
           </button>
         )}
       </header>
+
+      {DEV && <DevBar />}
 
       <Board level={level} />
 
