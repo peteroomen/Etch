@@ -3,12 +3,36 @@ import { LIBRARY } from '../game/blueprints';
 import { LEVELS, LEVELS_BY_ID } from '../game/levels';
 import { Score, Verification, parFor, runTimeline } from '../game/level';
 import { reset } from '../sim/world';
-import { loadLevel, session } from '../state/session';
+import { applyStep, loadLevel, session, settleStep } from '../state/session';
 import { useUI } from '../state/store';
 import { Board } from './Board';
 import { Palette } from './Palette';
 import { Scope } from './Scope';
 import { LevelSelect } from './LevelSelect';
+
+/**
+ * The free board gets everything, including the switches and lamps that are its
+ * inputs and outputs — a sandbox with no way to drive or read a circuit is not
+ * a sandbox.
+ */
+const SANDBOX_PALETTE = [
+  'wire',
+  'junction',
+  'cross',
+  'not',
+  'buf',
+  'or',
+  'switch',
+  'clock',
+  'led',
+  'nor2',
+  'nand2',
+  'and2',
+  'xor2',
+  'halfadder',
+  'fulladder',
+  'adder4',
+];
 
 function Metric({ label, value, par }: { label: string; value: number; par?: number }) {
   const delta = par === undefined ? 0 : value - par;
@@ -88,6 +112,7 @@ export function App() {
   const setShowBrief = useUI((s) => s.setShowBrief);
   const recordSolve = useUI((s) => s.recordSolve);
   const solved = useUI((s) => s.solved);
+  const playStep = useUI((s) => s.playStep);
 
   const [result, setResult] = useState<{ score: Score; unlocked: string | null; improved: boolean } | null>(
     null,
@@ -109,10 +134,22 @@ export function App() {
     setVerification(v);
     reset(session.world);
     setScopeOpen(true);
+    // then play it back, so the verdict comes with something to watch
+    applyStep(level, 0);
+    useUI.getState().setPlayStep(0);
+    setRunning(true);
     if (v.passed) {
       const improved = recordSolve(level.id, v.score, level.unlocks);
       setResult({ score: v.score, unlocked: level.unlocks ?? null, improved });
     }
+  };
+
+  const stepOnce = () => {
+    if (!level) return;
+    setRunning(false);
+    const next = (useUI.getState().playStep + 1) % level.timeline.steps;
+    settleStep(level, next);
+    useUI.getState().setPlayStep(next);
   };
 
   const goNext = () => {
@@ -155,18 +192,22 @@ export function App() {
         )}
       </header>
 
-      <Board />
+      <Board level={level} />
 
       {level && (
         <div className={`scope-drawer${scopeOpen ? ' open' : ''}`}>
           <button className="scope-toggle" onClick={() => setScopeOpen(!scopeOpen)}>
             {scopeOpen ? '▾' : '▴'} VERIFICATION
           </button>
-          {scopeOpen && <Scope level={level} verification={verification} />}
+          {scopeOpen && <Scope level={level} verification={verification} playStep={playStep} />}
         </div>
       )}
 
-      <Palette palette={level ? level.palette : ['wire', 'junction', 'cross', 'not', 'buf', 'or', 'led', 'switch', 'clock']} onVerify={verify} />
+      <Palette
+        palette={level ? level.palette : SANDBOX_PALETTE}
+        onVerify={level ? verify : undefined}
+        onStep={level ? stepOnce : undefined}
+      />
 
       {level && showBrief && (
         <div className="sheet" role="dialog" aria-label={level.title}>

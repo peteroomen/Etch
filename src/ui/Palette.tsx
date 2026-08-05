@@ -1,13 +1,15 @@
 import { useSyncExternalStore } from 'react';
 import { resolvePalette } from '../game/palette';
-import { canRedo, canUndo, redo, sessionRev, subscribeSession, undo } from '../state/session';
+import { canRedo, canUndo, clearBoard, redo, sessionRev, subscribeSession, undo } from '../state/session';
 import { useUI } from '../state/store';
 
 const DIR_ARROW = ['↑', '→', '↓', '←'];
 
 interface Props {
   palette: string[];
-  onVerify: () => void;
+  /** both absent in the sandbox, which has no timeline to verify or step through */
+  onVerify?: () => void;
+  onStep?: () => void;
 }
 
 function Glyph({ id }: { id: string }) {
@@ -26,7 +28,7 @@ function Glyph({ id }: { id: string }) {
   return <span className="chip-glyph">{map[id] ?? '▣'}</span>;
 }
 
-export function Palette({ palette, onVerify }: Props) {
+export function Palette({ palette, onVerify, onStep }: Props) {
   const tool = useUI((s) => s.tool);
   const setTool = useUI((s) => s.setTool);
   const rot = useUI((s) => s.rot);
@@ -86,9 +88,24 @@ export function Palette({ palette, onVerify }: Props) {
           {running ? '❙❙' : '▶'}
           <span className="chip-label">{running ? 'PAUSE' : 'RUN'}</span>
         </button>
-        <button className="chip wide accent" onClick={onVerify}>
-          ✓<span className="chip-label">VERIFY</span>
+        {onStep && (
+          <button className="chip wide" onClick={onStep} aria-label="step to the next input state">
+            ⇥<span className="chip-label">STEP</span>
+          </button>
+        )}
+        <button
+          className="chip wide"
+          onClick={clearBoard}
+          aria-label="clear the board"
+          title="Clear everything you placed. Undo brings it back."
+        >
+          ⌧<span className="chip-label">CLEAR</span>
         </button>
+        {onVerify && (
+          <button className="chip wide accent" onClick={onVerify}>
+            ✓<span className="chip-label">VERIFY</span>
+          </button>
+        )}
       </div>
 
       <label className="rate">

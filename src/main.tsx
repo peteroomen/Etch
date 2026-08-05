@@ -4,14 +4,17 @@ import { App } from './ui/App';
 import './styles.css';
 import { LEVELS, LEVELS_BY_ID } from './game/levels';
 import { commitEdit, loadLevel, session } from './state/session';
+import { fitViewport } from './render/board';
+import { debug } from './state/debug';
 
 // A small debug surface, so the board can be driven from a console or a test
 // harness without hand-drawing every wire.
-(window as unknown as Record<string, unknown>).etch = {
+Object.assign(debug, {
   session,
   LEVELS,
   loadLevel,
   commitEdit,
+  fitViewport,
   solve(id: string) {
     const level = LEVELS_BY_ID.get(id);
     if (!level) return false;
@@ -20,7 +23,7 @@ import { commitEdit, loadLevel, session } from './state/session';
     commitEdit();
     return true;
   },
-};
+});
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

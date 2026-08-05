@@ -13,6 +13,8 @@ interface Props {
   level: Level;
   verification: Verification | null;
   compact?: boolean;
+  /** the step the board is showing right now, marked on the chart */
+  playStep?: number;
 }
 
 const ROW = 26;
@@ -41,7 +43,7 @@ function wavePath(bits: (boolean | null)[], stepW: number, top: number, height: 
   return d.trim();
 }
 
-export function Scope({ level, verification, compact }: Props) {
+export function Scope({ level, verification, compact, playStep }: Props) {
   const t = level.timeline;
   const ins = Object.keys(t.inputs);
   const outs = Object.keys(t.outputs);
@@ -78,6 +80,15 @@ export function Scope({ level, verification, compact }: Props) {
               className={i % 4 === 0 ? 'scope-grid strong' : 'scope-grid'}
             />
           ))}
+          {playStep !== undefined && playStep >= 0 && playStep < t.steps && (
+            <rect
+              x={playStep * stepW}
+              y={14}
+              width={stepW}
+              height={height - 26}
+              className="scope-playhead"
+            />
+          )}
           {failStep !== null && (
             <rect
               x={failStep * stepW}

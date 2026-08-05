@@ -13,7 +13,18 @@
 import { Level, createLevelWorld } from '../game/level';
 import { LIBRARY } from '../game/blueprints';
 import { linkAllPins } from '../sim/draw';
-import { Snapshot, World, createWorld, rebuild, reset, restore, snapshot } from '../sim/world';
+import {
+  Snapshot,
+  World,
+  createWorld,
+  rebuild,
+  removeAt,
+  reset,
+  restore,
+  setInput,
+  settle,
+  snapshot,
+} from '../sim/world';
 
 const UNDO_DEPTH = 50;
 
@@ -93,6 +104,44 @@ export function commitEdit(): void {
   rebuild(session.world);
   reset(session.world);
   touched();
+}
+
+/**
+ * Put the board into one step of a level's timeline.
+ *
+ * Verification used to run the whole thing instantly and then reset, so the
+ * only thing you ever saw was a verdict. Playback drives the same inputs at
+ * the player's tick rate, so the circuit is watched rather than reported on.
+ */
+export function applyStep(level: Level, step: number): void {
+  const t = level.timeline;
+  const i = ((step % t.steps) + t.steps) % t.steps;
+  for (const name of Object.keys(t.inputs)) {
+    setInput(session.world, name, !!t.inputs[name][i]);
+  }
+  touched();
+}
+
+/** Jump straight to the settled result of a step, for the STEP button. */
+export function settleStep(level: Level, step: number): void {
+  applyStep(level, step);
+  settle(session.world, 256);
+  touched();
+}
+
+/**
+ * Wipe everything the player put down, keeping the level's own pins.
+ * Takes an undo point first, so it is a mistake you can walk back.
+ */
+export function clearBoard(): void {
+  beginEdit();
+  const g = session.world.grid;
+  for (let y = 0; y < g.h; y++) {
+    for (let x = 0; x < g.w; x++) removeAt(session.world, x, y);
+  }
+  session.world.placements = [];
+  session.world.switches.clear();
+  commitEdit();
 }
 
 export function undo(): void {

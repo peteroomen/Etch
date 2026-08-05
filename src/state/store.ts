@@ -29,6 +29,8 @@ interface UIState {
   verification: Verification | null;
   probeNet: number;
   showBrief: boolean;
+  /** which timeline step the board is currently showing */
+  playStep: number;
 
   // progress — the only persisted part
   unlocked: string[];
@@ -36,6 +38,7 @@ interface UIState {
 
   setScreen: (s: Screen) => void;
   openLevel: (id: string) => void;
+  openSandbox: () => void;
   setTool: (t: string) => void;
   rotate: () => void;
   setRunning: (r: boolean) => void;
@@ -43,6 +46,7 @@ interface UIState {
   setVerification: (v: Verification | null) => void;
   setProbeNet: (n: number) => void;
   setShowBrief: (v: boolean) => void;
+  setPlayStep: (n: number) => void;
   recordSolve: (levelId: string, score: Score, unlocks?: string) => boolean;
 }
 
@@ -58,13 +62,18 @@ export const useUI = create<UIState>()(
       verification: null,
       probeNet: -1,
       showBrief: true,
+      playStep: 0,
 
       unlocked: [],
       solved: {},
 
       setScreen: (screen) => set({ screen }),
       openLevel: (levelId) =>
-        set({ levelId, screen: 'play', tool: 'wire', verification: null, running: false, showBrief: true }),
+        set({ levelId, screen: 'play', tool: 'wire', verification: null, running: false, showBrief: true, playStep: 0 }),
+      // the sandbox has no level, and forgetting to say so left it wearing the
+      // previous level's palette, brief, par and verification panel
+      openSandbox: () =>
+        set({ levelId: null, screen: 'play', tool: 'wire', verification: null, running: false, showBrief: false }),
       setTool: (tool) => set({ tool, probeNet: -1 }),
       rotate: () => set({ rot: ((get().rot + 1) & 3) as Dir }),
       setRunning: (running) => set({ running }),
@@ -72,6 +81,7 @@ export const useUI = create<UIState>()(
       setVerification: (verification) => set({ verification }),
       setProbeNet: (probeNet) => set({ probeNet }),
       setShowBrief: (showBrief) => set({ showBrief }),
+      setPlayStep: (playStep) => set({ playStep }),
 
       /**
        * Record a solve. Returns true when this run improved on any metric,

@@ -12,14 +12,34 @@ import { Kind } from '../sim/kinds';
 import { at, cellKind, idx, inBounds } from '../sim/grid';
 import { bresenham, drawStroke, linkComponent, linkPin, Point } from '../sim/draw';
 import { Axis, axisOf, clampToBoard, planRoute } from '../sim/route';
-import { placeBlueprint, placeComponent, removeAt, setCell, tick } from '../sim/world';
-import { Viewport, cellAtScreen, fitViewport, renderBoard } from '../render/board';
+import {
+  placeBlueprint,
+  placeComponent,
+  removeAt,
+  reset,
+  setCell,
+  setInput,
+  tick,
+  toggleSwitch,
+} from '../sim/world';
+
+/** settled ticks to hold on a step before moving to the next input state */
+const HOLD_TICKS = 2;
+import { Viewport, cellAtScreen, clampViewport, fitViewport, renderBoard } from '../render/board';
 import { MAX_CELL, MIN_CELL } from '../render/tokens';
 import { paletteItem } from '../game/palette';
 import { beginEdit, commitEdit, session, touched } from '../state/session';
+import { debug } from '../state/debug';
 import { useUI } from '../state/store';
+import { Level } from '../game/level';
+import { applyStep } from '../state/session';
 
-export function Board() {
+interface BoardProps {
+  /** null in the sandbox, where there is no timeline to walk */
+  level: Level | null;
+}
+
+export function Board({ level }: BoardProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const vp = useRef<Viewport>({ ox: 0, oy: 0, cell: 30 });
@@ -39,6 +59,15 @@ export function Board() {
   const rate = useUI((s) => s.rate);
   const probeNet = useUI((s) => s.probeNet);
   const setProbeNet = useUI((s) => s.setProbeNet);
+  const playStep = useUI((s) => s.playStep);
+  const setPlayStep = useUI((s) => s.setPlayStep);
+
+  /** ticks with nothing changing; enough of them means this step has settled */
+  const stable = useRef(0);
+  const stepRef = useRef(playStep);
+  stepRef.current = playStep;
+  const levelRef = useRef(level);
+  levelRef.current = level;
 
   const toolRef = useRef(tool);
   const rotRef = useRef(rot);
@@ -68,12 +97,9 @@ export function Board() {
     if (item.tool === 'inspect') {
       const k = cellKind(at(w.grid, x, y));
       if (k === Kind.Source || k === Kind.Switch) {
-        for (const c of w.comps) {
-          if (c.x === x && c.y === y) {
-            c.state = c.state ? 0 : 1;
-            if (c.pin) w.inputs.set(c.pin, c.state === 1);
-          }
-        }
+        const comp = w.comps.find((c) => c.x === x && c.y === y);
+        if (comp?.pin) setInput(w, comp.pin, !(w.inputs.get(comp.pin) ?? false));
+        else toggleSwitch(w, x, y);
         touched();
         return;
       }
@@ -198,6 +224,13 @@ export function Board() {
         vp.current.ox = cx - (prev.cx - vp.current.ox) * scale + (cx - prev.cx);
         vp.current.oy = cy - (prev.cy - vp.current.oy) * scale + (cy - prev.cy);
         vp.current.cell = nextCell;
+        vp.current = clampViewport(
+          vp.current,
+          session.world.grid.w,
+          session.world.grid.h,
+          cv.clientWidth,
+          cv.clientHeight,
+        );
         pinch.current = { dist, cx, cy };
         return;
       }
@@ -278,14 +311,39 @@ export function Board() {
       prev = now;
       if (running) {
         acc += dt;
-        const step = 1000 / Math.max(1, rate);
+        const period = 1000 / Math.max(1, rate);
         let guard = 0;
-        while (acc >= step && guard++ < 20) {
-          acc -= step;
+        while (acc >= period && guard++ < 20) {
+          acc -= period;
+          const before = session.world.nets.value.slice();
           tick(session.world);
+          const after = session.world.nets.value;
+
+          const lv = levelRef.current;
+          if (!lv) continue;
+          let changed = before.length !== after.length;
+          if (!changed) {
+            for (let i = 0; i < after.length; i++) {
+              if (before[i] !== after[i]) {
+                changed = true;
+                break;
+              }
+            }
+          }
+          // once the circuit stops moving, hold a beat and drive the next
+          // input state, so RUN walks the whole timeline instead of sitting
+          // on step one forever
+          stable.current = changed ? 0 : stable.current + 1;
+          if (stable.current >= HOLD_TICKS) {
+            stable.current = 0;
+            const next = (stepRef.current + 1) % lv.timeline.steps;
+            applyStep(lv, next);
+            setPlayStep(next);
+          }
         }
       } else {
         acc = 0;
+        stable.current = 0;
       }
 
       const ctx = cv.getContext('2d');
@@ -312,12 +370,23 @@ export function Board() {
         });
       }
       lastRev.current = session.rev;
+      // the harness needs the same transform the renderer just used
+      debug.vp = vp.current;
       raf = requestAnimationFrame(frame);
     };
 
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
-  }, [running, rate, probeNet]);
+  }, [running, rate, probeNet, setPlayStep]);
+
+  // starting a run begins the timeline again from the top
+  useEffect(() => {
+    if (!running || !level) return;
+    reset(session.world);
+    applyStep(level, 0);
+    setPlayStep(0);
+    stable.current = 0;
+  }, [running, level, setPlayStep]);
 
   // refit when the level changes
   useEffect(() => {

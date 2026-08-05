@@ -54,14 +54,33 @@ export function fitViewport(
   boardH: number,
   screenW: number,
   screenH: number,
-  min = 16,
+  min = 28,
   max = 48,
 ): Viewport {
+  // Never shrink below a thumb. A wide level is meant to need panning — that is
+  // what the two-finger gesture is for — and squeezing an 18-wide board into
+  // 390px gave 21px cells, under the minimum this was supposed to hold.
   const cell = Math.max(min, Math.min(max, Math.floor(Math.min(screenW / boardW, screenH / boardH))));
   return {
     cell,
     ox: Math.round((screenW - boardW * cell) / 2),
     oy: Math.round((screenH - boardH * cell) / 2),
+  };
+}
+
+/** Keep at least a few cells of board on screen, however far you fling it. */
+export function clampViewport(
+  vp: Viewport,
+  boardW: number,
+  boardH: number,
+  screenW: number,
+  screenH: number,
+): Viewport {
+  const margin = vp.cell * 3;
+  return {
+    cell: vp.cell,
+    ox: Math.min(screenW - margin, Math.max(margin - boardW * vp.cell, vp.ox)),
+    oy: Math.min(screenH - margin, Math.max(margin - boardH * vp.cell, vp.oy)),
   };
 }
 
@@ -338,6 +357,38 @@ function drawComponent(ctx: CanvasRenderingContext2D, world: World, x: number, y
     ctx.arc(cx, cy, S_ * 0.24, 0, Math.PI * 2);
     ctx.fill();
     return;
+  }
+
+  // Mark where the pins are, and which way they face. A gate's input side is
+  // otherwise a guess — "top and bottom in, east out" is a perfectly reasonable
+  // wrong reading, and the game never corrected it.
+  if (S_ >= 18) {
+    for (const p of worldPins(kind, x, y, rot)) {
+      ctx.save();
+      ctx.translate((p.x - x) * S_ + S_ / 2, (p.y - y) * S_ + S_ / 2);
+      ctx.rotate((p.dir * Math.PI) / 2);
+      const edge = S_ / 2 - inset * 0.55;
+      ctx.fillStyle = T.glyph;
+      ctx.strokeStyle = T.glyph;
+      ctx.lineWidth = Math.max(1, S_ * 0.045);
+      if (p.role === 'out') {
+        // a solid arrowhead pointing out of the body: signal leaves here
+        ctx.beginPath();
+        ctx.moveTo(-S_ * 0.09, -edge + S_ * 0.1);
+        ctx.lineTo(S_ * 0.09, -edge + S_ * 0.1);
+        ctx.lineTo(0, -edge - S_ * 0.02);
+        ctx.closePath();
+        ctx.fill();
+      } else {
+        // an open notch: signal arrives here
+        ctx.beginPath();
+        ctx.moveTo(-S_ * 0.09, -edge - S_ * 0.02);
+        ctx.lineTo(0, -edge + S_ * 0.11);
+        ctx.lineTo(S_ * 0.09, -edge - S_ * 0.02);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
   }
 
   if (kind === Kind.Source || kind === Kind.Sink || kind === Kind.Switch) {

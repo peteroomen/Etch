@@ -61,6 +61,13 @@ export interface World {
   pinNames: Map<string, string>;
   /** "x,y,dir" -> net, for pins connected by touching rather than by wire */
   bridged: Map<string, number>;
+  /**
+   * "x,y" -> switch position.
+   *
+   * rebuild() makes fresh components with state 0, so without somewhere durable
+   * to keep it every toggle was silently lost on the next edit.
+   */
+  switches: Map<string, number>;
 }
 
 const EMPTY_LIBRARY: BlueprintLibrary = new Map();
@@ -83,6 +90,7 @@ export function createWorld(w: number, h: number, library: BlueprintLibrary = EM
     inputs: new Map(),
     pinNames: new Map(),
     bridged: new Map(),
+    switches: new Map(),
   };
   rebuild(world);
   return world;
@@ -612,9 +620,19 @@ function applyInputs(world: World): void {
   for (const c of world.comps) {
     if (c.kind !== Kind.Source && c.kind !== Kind.Switch) continue;
     if (c.pin) c.state = world.inputs.get(c.pin) ? 1 : 0;
+    else c.state = world.switches.get(`${c.x},${c.y}`) ?? 0;
     c.next = c.state ? HI : Z;
     c.out = c.next;
   }
+}
+
+/** Flip a switch that has no level pin name, and remember it across edits. */
+export function toggleSwitch(world: World, x: number, y: number): void {
+  const key = `${x},${y}`;
+  const next = (world.switches.get(key) ?? 0) ? 0 : 1;
+  world.switches.set(key, next);
+  applyInputs(world);
+  commit(world);
 }
 
 /** Read a level output pin as a boolean. Z and X are not high. */
@@ -698,6 +716,7 @@ export function cloneWorld(world: World): World {
     placements: world.placements.map((p) => ({ ...p })),
     inputs: new Map(world.inputs),
     pinNames: new Map(world.pinNames),
+    switches: new Map(world.switches),
     dirty: true,
   };
   rebuild(w);

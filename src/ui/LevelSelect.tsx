@@ -7,7 +7,7 @@ import { useUI } from '../state/store';
 export function LevelSelect() {
   const solved = useUI((s) => s.solved);
   const openLevel = useUI((s) => s.openLevel);
-  const setScreen = useUI((s) => s.setScreen);
+  const openSandbox = useUI((s) => s.openSandbox);
 
   const chapters = [...new Set(LEVELS.map((l) => l.chapter))];
   const firstUnsolved = LEVELS.findIndex((l) => !solved[l.id]);
@@ -74,7 +74,7 @@ export function LevelSelect() {
           className="level"
           onClick={() => {
             loadSandbox();
-            setScreen('play');
+            openSandbox();
           }}
         >
           <span className="level-no">∞</span>

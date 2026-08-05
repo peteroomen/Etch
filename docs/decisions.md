@@ -287,3 +287,63 @@ Options, none taken yet:
 
 Option 1 is the recommendation: it is the only one that turns a redundancy into
 a trade-off, and it costs a single number in the kind table.
+
+## Playtest round one
+
+Six changes, all from watching the game get played rather than from reading it.
+
+### The sandbox wears its own palette
+It never had one. `openSandbox()` did not clear `levelId`, so the free board
+inherited whatever level was last open — most often `WIRE ERASE PROBE NOT`, a
+sandbox with no way to drive a circuit and nothing to read one with. It now has
+an explicit palette that includes switches, clocks and lamps, and every
+blueprint the player has earned.
+
+The same fix exposed a second bug underneath it. `rebuild()` makes fresh
+components with `state: 0`, so every switch snapped back off the moment you
+drew another wire — which is every gesture. Switch positions now live on the
+world as `switches: Map<"x,y", number>` and are re-applied after each rebuild.
+State that belongs to the *player* must not live on a structure the editor
+rebuilds.
+
+### Never shrink a cell below a thumb
+`fitViewport` would shrink to 16px to make a whole level fit. Measured on the
+18-wide boards that is a 21px cell, which is under half the 44px hit target and
+exactly the complaint. The floor is now 28px and wide levels simply overflow;
+`clampViewport()` keeps three cells on screen so a pan can never lose the board.
+Fitting the level is worth less than being able to hit it.
+
+### Pins are marked
+"Top and bottom in, east out when facing east" is a perfectly reasonable reading
+of an unlabelled gate, and the game never corrected it. Outputs now draw a
+filled arrowhead pointing out, inputs an open notch, in neutral ink so signal
+colour keeps meaning signal. Drawn only at 18px and up, where they are legible
+rather than noise.
+
+### Verification plays back
+A verdict with a dark board tells you *that* you failed. VERIFY now runs the
+timeline, then replays it: `applyStep` drives the inputs, the board animates,
+and an amber playhead band tracks the current step on the scope. RUN walks the
+whole timeline on its own — `HOLD_TICKS` settled ticks, then the next input
+state — instead of sitting on step one forever. STEP advances one input state
+for reading a circuit at your own pace.
+
+### Briefs give the goal, not the build
+Several briefs printed their own solutions — "a copy is two inverters back to
+back", "that route costs five components and three ticks". Rewritten to state
+the goal and the constraint and stop. Early puzzles having one answer is fine in
+a teaching game; being told the answer is not.
+
+### The controls row wraps
+Adding STEP and CLEAR pushed VERIFY half off the right edge of a 390px screen.
+The tool strip may scroll — it grows with the palette — but the controls may
+not: a primary action you have to scroll to find is a bug. They wrap, and VERIFY
+lands full-width on its own row. The sandbox renders neither STEP nor VERIFY at
+all, having no timeline to walk or verify.
+
+### The smoke test
+`scripts/smoke.mjs` drives the built app in a real browser at 390px: it clicks
+the menu, picks palette chips, drags wires on the canvas, and asserts against
+the world the app actually built. Every one of the six bugs above was found by
+playing, and none of them could have been caught by the unit tests, which prove
+the simulator rather than the game. Twenty-one assertions, run against `dist`.

@@ -147,8 +147,8 @@ const neither: Level = {
   teaches: 'NOR is one inverter: join, then invert.',
   brief: [
     'OUT is HIGH only when both inputs are LOW.',
-    'You already know how to OR — join the nets. Invert the result and you have NOR, for the price of a single component.',
-    'This is the cheapest gate in this universe. Remember that; the ordering is not the one you were taught.',
+    'One inverter and as much wire as you like is enough.',
+    'Whatever you end up with, notice what it cost. The ordering of the gates here is not the one you were taught.',
   ],
   grid: { w: 12, h: 7 },
   inputs: [
@@ -173,8 +173,8 @@ const notBoth: Level = {
   teaches: 'NAND is two inverters: invert first, then join.',
   brief: [
     'OUT is LOW only when both inputs are HIGH.',
-    'NOT A OR NOT B. Invert each input, then join the two inverter outputs.',
-    'Because you joined outputs rather than inputs, A and B survive this gate — you can still use them elsewhere. That distinction is about to matter.',
+    'Last level you joined the inputs. Consider inverting first.',
+    'When you have it, check whether A and B survived. That distinction is about to matter.',
   ],
   grid: { w: 14, h: 7 },
   inputs: [
@@ -202,8 +202,8 @@ const both: Level = {
   teaches: 'AND is NAND, undone. De Morgan, in hardware.',
   brief: [
     'OUT is HIGH only when both inputs are HIGH.',
-    'You are holding most of the answer already: NOT (NOT A OR NOT B).',
-    'Three components and two ticks — the dearest of the three basic gates here, and the exact inverse of what silicon would charge you.',
+    'You built most of this last level. It needs one more thing done to it.',
+    'De Morgan is in here somewhere. Three components will do it — the dearest of the three basic gates in this universe, and the exact inverse of what silicon charges.',
   ],
   grid: { w: 16, h: 7 },
   inputs: [
@@ -233,9 +233,7 @@ const copy: Level = {
   brief: [
     'Q1 is NOR of A and B. Q2 is NOR of A and C.',
     'Both need A. But joining A into the first NOR consumes it — A and B become one node, and there is no A left to give the second.',
-    'You can already do this. A copy is two inverters back to back, and that route costs five components and three ticks.',
-    'Two cheaper ways. BUF drives a new node with the value it reads — one component, one tick, an independent copy. Or the OR gate, which reads both its inputs rather than merging them. Either gets you to four and two.',
-    'Here the two cost exactly the same. They will not always.',
+    'So you need a second A, driven independently of the first. There is more than one way to make one, and on this board they do not all cost the same.',
   ],
   grid: { w: 16, h: 11 },
   inputs: [
@@ -278,9 +276,8 @@ const oneOrOther: Level = {
   teaches: 'XOR, the way this substrate allows it.',
   brief: [
     'OUT is HIGH when exactly one input is HIGH.',
-    'The textbook form is (A OR B) AND NOT (A AND B). It cannot be built here: computing A OR B destroys the A and B the second half still needs.',
-    'Build (A AND NOT B) OR (NOT A AND B) instead. Each half joins an inverter output with a copy, so nothing is consumed before it has been used.',
-    'Inverters alone will do it in eight. With a cheap copy it comes down to six.',
+    'The textbook form is (A OR B) AND NOT (A AND B). Try it. Computing A OR B destroys the A and B the other half still needs.',
+    'A form that only ever joins freshly driven nets will work instead. Inverters alone do it in eight; with a cheap copy, six.',
   ],
   grid: { w: 18, h: 12 },
   inputs: [
@@ -327,7 +324,7 @@ const halfAdder: Level = {
   teaches: 'Two bits, and the first carry.',
   brief: [
     'SUM is the low bit of A plus B. CARRY is the high bit.',
-    'Both gates read A and B, and reading is free — only joining consumes. Route each input to both gates.',
+    'Two outputs, both wanting the same two inputs. Reading is free; only joining consumes.',
   ],
   grid: { w: 16, h: 11 },
   inputs: [
@@ -362,7 +359,8 @@ const fullAdder: Level = {
   teaches: 'Two half adders, and their carries joined.',
   brief: [
     'Add three bits: A, B and a carry in.',
-    'Two half adders in series give the sum. Either of them may produce a carry, and both are inverter outputs — so joining them is safe.',
+    'You already have something that adds two of them.',
+    'More than one stage can raise a carry. Work out whether two of them ever can at once — the answer decides how you combine them.',
   ],
   grid: { w: 20, h: 11 },
   inputs: [
