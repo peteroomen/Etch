@@ -100,6 +100,20 @@ export interface SeqOptions {
   macros?: SeqMacro[];
   /** how a tick resolves; defaults to the rule the game itself uses */
   mode?: UpdateMode;
+  /**
+   * Search only this exact part count, rather than deepening from zero.
+   *
+   * Used when a caller drives the deepening itself — a parallel run has to,
+   * because "stop one count past the first solution" is a decision about the
+   * WHOLE search and no single slice of it can make that call.
+   */
+  onlyParts?: number;
+  /**
+   * Take only every count-th source assignment, starting at index. The
+   * assignments are independent, so this splits a search across processes
+   * without any of them needing to talk to each other.
+   */
+  slice?: { index: number; count: number };
 }
 
 export interface SeqResult {
@@ -388,6 +402,8 @@ export function synthesiseSeq(opts: SeqOptions): SeqResult {
     nodeBudget = 2_000_000,
     macros = [],
     mode = 'tiebreak',
+    onlyParts,
+    slice,
   } = opts;
   const macroBy = new Map(macros.map((m) => [m.id, m]));
 
@@ -405,11 +421,15 @@ export function synthesiseSeq(opts: SeqOptions): SeqResult {
   const searchSpec: SeqSpec = { ...spec, cap: spec.cap ?? maxParts * 2 + 8 };
 
   for (let parts = 0; parts <= maxParts && !truncated; parts++) {
+    if (onlyParts !== undefined && parts !== onlyParts) continue;
     // there are only k + parts drivers, so more nets than that leaves one empty
     const netCap = Math.min(maxNets, spec.k + parts);
     for (let nets = 1; nets <= netCap; nets++) {
       const catalogue = moveCatalogue(kinds, nets, macros);
+      let srcIndex = -1;
       for (const srcNet of sourceAssignments(spec.k, nets)) {
+        srcIndex++;
+        if (slice && srcIndex % slice.count !== slice.index) continue;
         const chosen: Move[] = [];
 
         /**
@@ -526,8 +546,10 @@ export function synthesiseSeq(opts: SeqOptions): SeqResult {
       if (truncated) break;
     }
     // cheapest-first: once a part count yields anything, deeper counts only
-    // matter for the tick end of the frontier, which one more level covers
-    if (found.size > 0 && parts >= smallest(found) + 1) break;
+    // matter for the tick end of the frontier, which one more level covers.
+    // A SLICE cannot apply this — what it has found says nothing about what the
+    // other slices have — so it explores its whole share and the caller merges.
+    if (onlyParts === undefined && !slice && found.size > 0 && parts >= smallest(found) + 1) break;
   }
 
   const all = [...found.values()]
