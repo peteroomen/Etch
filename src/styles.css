@@ -624,3 +624,61 @@ button:focus-visible {
   color: var(--dim);
   font-size: 12px;
 }
+
+/* ---------------------------------------------------------------- clues */
+
+.clue-purse {
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+.clue-free {
+  font-size: 12px;
+  color: var(--good);
+  margin-bottom: 12px;
+}
+.clue-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.clue-list li {
+  border: 1px solid var(--edge);
+  border-radius: 5px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+}
+.clue-list li.owned {
+  border-color: var(--amber);
+  background: var(--amber-soft);
+}
+.clue-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.clue-head strong {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+}
+.clue-buy {
+  flex: 0 0 auto;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  padding: 5px 10px;
+  border: 1px solid var(--cyan);
+  border-radius: 4px;
+  color: var(--cyan);
+}
+.clue-buy:disabled {
+  opacity: 0.3;
+  border-color: var(--edge);
+  color: var(--dim);
+}
+.clue-body {
+  font-size: 13px;
+  color: var(--dim);
+  margin: 6px 0 0;
+  max-width: 52ch;
+}

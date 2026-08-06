@@ -35,6 +35,12 @@ interface UIState {
   // progress — the only persisted part
   unlocked: string[];
   solved: Record<string, Best>;
+  /** unspent clues */
+  clues: number;
+  /** highest clue tier bought, per level */
+  clueTier: Record<string, number>;
+  /** failed verifications per level, which eventually buy a free first clue */
+  fails: Record<string, number>;
 
   setScreen: (s: Screen) => void;
   openLevel: (id: string) => void;
@@ -47,7 +53,10 @@ interface UIState {
   setProbeNet: (n: number) => void;
   setShowBrief: (v: boolean) => void;
   setPlayStep: (n: number) => void;
-  recordSolve: (levelId: string, score: Score, unlocks?: string) => boolean;
+  recordSolve: (levelId: string, score: Score, par: Score, unlocks?: string) => boolean;
+  /** returns false when there is nothing to spend */
+  buyClue: (levelId: string, tier: number, cost: number) => boolean;
+  noteFailure: (levelId: string) => void;
 }
 
 export const useUI = create<UIState>()(
@@ -66,6 +75,9 @@ export const useUI = create<UIState>()(
 
       unlocked: [],
       solved: {},
+      clues: 0,
+      clueTier: {},
+      fails: {},
 
       setScreen: (screen) => set({ screen }),
       openLevel: (levelId) =>
@@ -84,10 +96,43 @@ export const useUI = create<UIState>()(
       setPlayStep: (playStep) => set({ playStep }),
 
       /**
+       * Buy a clue tier. Tiers are cumulative, so buying tier 3 grants 1 and 2
+       * as well, and re-reading one you already own is free.
+       */
+      buyClue: (levelId, tier, cost) => {
+        const have = get().clueTier[levelId] ?? 0;
+        if (tier <= have) return true;
+        if (get().clues < cost) return false;
+        set({
+          clues: get().clues - cost,
+          clueTier: { ...get().clueTier, [levelId]: tier },
+        });
+        return true;
+      },
+
+      /**
+       * Being stuck is not the same as being lazy.
+       *
+       * Charging a player to find out whether they are even close is a bad
+       * trade, so enough failed attempts on one level grant its first clue
+       * outright. It is the floor that stops a currency becoming a wall.
+       */
+      noteFailure: (levelId) => {
+        const n = (get().fails[levelId] ?? 0) + 1;
+        const fails = { ...get().fails, [levelId]: n };
+        const tier = get().clueTier[levelId] ?? 0;
+        if (n >= 3 && tier < 1) {
+          set({ fails, clueTier: { ...get().clueTier, [levelId]: 1 } });
+        } else {
+          set({ fails });
+        }
+      },
+
+      /**
        * Record a solve. Returns true when this run improved on any metric,
        * which is what the result screen calls out.
        */
-      recordSolve: (levelId, score, unlocks) => {
+      recordSolve: (levelId, score, par, unlocks) => {
         const prev = get().solved[levelId];
         const best: Best = prev
           ? {
@@ -102,16 +147,40 @@ export const useUI = create<UIState>()(
           best.ticks < prev.ticks ||
           best.area < prev.area;
         const unlocked = get().unlocked;
+
+        /**
+         * Clues are minted by playing well, which is the whole point: it makes
+         * the three metrics buy something instead of being a readout you
+         * glance at. One for beating par on any metric, one for solving a
+         * level having spent nothing on it.
+         */
+        let minted = 0;
+        if (!prev) {
+          const beatPar =
+            score.components < par.components ||
+            score.ticks < par.ticks ||
+            score.area < par.area;
+          if (beatPar) minted++;
+          if ((get().clueTier[levelId] ?? 0) === 0) minted++;
+        }
+
         set({
           solved: { ...get().solved, [levelId]: best },
           unlocked: unlocks && !unlocked.includes(unlocks) ? [...unlocked, unlocks] : unlocked,
+          clues: get().clues + minted,
         });
         return improved;
       },
     }),
     {
       name: 'etch.progress',
-      partialize: (s) => ({ unlocked: s.unlocked, solved: s.solved }),
+      partialize: (s) => ({
+        unlocked: s.unlocked,
+        solved: s.solved,
+        clues: s.clues,
+        clueTier: s.clueTier,
+        fails: s.fails,
+      }),
     },
   ),
 );

@@ -11,6 +11,7 @@ import { Palette } from './Palette';
 import { Scope } from './Scope';
 import { LevelSelect } from './LevelSelect';
 import { Datasheet } from './Datasheet';
+import { Clues } from './Clues';
 import { DevBar } from './DevBar';
 import { DEV } from '../state/dev';
 
@@ -109,6 +110,7 @@ export function App() {
   const showBrief = useUI((s) => s.showBrief);
   const setShowBrief = useUI((s) => s.setShowBrief);
   const recordSolve = useUI((s) => s.recordSolve);
+  const noteFailure = useUI((s) => s.noteFailure);
   const solved = useUI((s) => s.solved);
   const playStep = useUI((s) => s.playStep);
 
@@ -116,7 +118,7 @@ export function App() {
     null,
   );
   const [scopeOpen, setScopeOpen] = useState(true);
-  const [tab, setTab] = useState<'brief' | 'rules'>('brief');
+  const [tab, setTab] = useState<'brief' | 'rules' | 'clues'>('brief');
 
   const level = levelId ? LEVELS_BY_ID.get(levelId) ?? null : null;
 
@@ -137,8 +139,9 @@ export function App() {
     applyStep(level, 0);
     useUI.getState().setPlayStep(0);
     setRunning(true);
+    if (!v.passed) noteFailure(level.id);
     if (v.passed) {
-      const improved = recordSolve(level.id, v.score, level.unlocks);
+      const improved = recordSolve(level.id, v.score, parFor(level, LIBRARY), level.unlocks);
       // keep the board that earned it, not just the numbers
       if (improved) saveBest(level.id, session.world, v.score);
       setResult({ score: v.score, unlocked: level.unlocks ?? null, improved });
@@ -238,6 +241,14 @@ export function App() {
                 >
                   Rules
                 </button>
+                <button
+                  role="tab"
+                  aria-selected={tab === 'clues'}
+                  className={tab === 'clues' ? 'sel' : ''}
+                  onClick={() => setTab('clues')}
+                >
+                  Clues
+                </button>
               </div>
             )}
 
@@ -267,6 +278,14 @@ export function App() {
               >
                 Load my best — {best.components}c {best.ticks}t {best.area}a
               </button>
+            )}
+
+            {level && tab === 'clues' && (
+              <>
+                <div className="eyebrow">Bought with what you have earned</div>
+                <h2>Clues</h2>
+                <Clues level={level} onBuilt={() => setShowBrief(false)} />
+              </>
             )}
 
             {(!level || tab === 'rules') && (

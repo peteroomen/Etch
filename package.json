@@ -13,7 +13,8 @@
     "balance": "vite-node scripts/balance.ts",
     "area": "vite-node scripts/area.ts",
     "smoke": "node scripts/smoke.mjs",
-    "parbench": "vite-node scripts/parbench.ts"
+    "parbench": "vite-node scripts/parbench.ts",
+    "clues": "vite-node scripts/clues.ts"
   },
   "dependencies": {
     "react": "^19.1.0",
