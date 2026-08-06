@@ -50,7 +50,8 @@ const continuity: Level = {
   teaches: 'A wire is a node, not a pipe.',
   brief: [
     'Connect IN to OUT.',
-    'Every wire cell you join into one run is a single electrical node. Signal across it is instantaneous — there is no delay in wire, only in components.',
+    'Wire joined into one run is a single node. The signal is the same everywhere along it, at the same instant.',
+    'Wire costs you nothing and takes no time. However long you make it.',
   ],
   grid: { w: 12, h: 7 },
   inputs: [{ name: 'a', x: 0, y: 3 }],
@@ -67,8 +68,8 @@ const invert: Level = {
   teaches: 'Components cost a tick. Wire does not.',
   brief: [
     'OUT must be the opposite of IN.',
-    'The inverter is the only active component you have. It drives its output HIGH when its input is LOW, and lets go otherwise — every net has a weak pull-down that supplies the zero.',
-    'It answers one tick after its input changes.',
+    'The inverter drives its output HIGH while its input is LOW. When the input goes HIGH it lets go — and a wire nothing is holding falls LOW on its own.',
+    'It answers one tick later. Components take time. Wire does not.',
   ],
   grid: { w: 12, h: 7 },
   inputs: [{ name: 'a', x: 0, y: 3 }],
@@ -89,7 +90,8 @@ const fanout: Level = {
   teaches: 'Reading a net is free, and any number of readers may share one.',
   brief: [
     'All three outputs must follow IN.',
-    'One node can be read by as many things as you like at no cost. Later you will find that JOINING nets is the expensive direction — but reading is free.',
+    'Reading a node is free. Attach as many things as you like — none of them changes it, and none of them costs you.',
+    'Joining is the direction that costs. You meet that next.',
   ],
   grid: { w: 12, h: 9 },
   inputs: [{ name: 'a', x: 0, y: 4 }],
@@ -116,8 +118,8 @@ const either: Level = {
   teaches: 'Joining two nets ORs them — and consumes them.',
   brief: [
     'OUT must be HIGH when either input is.',
-    'There is no OR component, and there does not need to be one. Drive one node from two places and it reads HIGH when either driver pulls it high. OR costs nothing and takes no tick.',
-    'Note what it costs instead: A and B are now the same node. They cannot be told apart again downstream.',
+    'There is no OR component and you do not need one. Drive one node from two places: it goes HIGH when either driver pulls it HIGH. No component, no tick.',
+    'It costs you something else. A and B are one node now, and nothing downstream can tell them apart again.',
   ],
   grid: { w: 12, h: 7 },
   inputs: [
@@ -140,8 +142,8 @@ const crossing: Level = {
   teaches: 'Wires that touch do not join. Crossing is explicit.',
   brief: [
     'A must reach the lower output, B the upper. Their paths have to cross.',
-    'Two runs drawn over each other become a CROSSOVER: the two axes stay separate nodes. To join instead, place a JUNCTION.',
-    'Crossing is the default because on a small screen you will draw over an existing run constantly.',
+    'Draw one run over another and you get a CROSSOVER: the two stay separate nodes. Place a JUNCTION instead and they become one.',
+    'Crossing is what happens by default, because on a small screen you will draw over your own wires constantly.',
   ],
   grid: { w: 12, h: 9 },
   inputs: [
@@ -169,8 +171,8 @@ const neither: Level = {
   teaches: 'NOR is one inverter: join, then invert.',
   brief: [
     'OUT is HIGH only when both inputs are LOW.',
-    'One inverter and as much wire as you like is enough.',
-    'Whatever you end up with, notice what it cost. The ordering of the gates here is not the one you were taught.',
+    'One inverter and as much wire as you like.',
+    'When it works, look at what it cost. Gates are not priced here the way you were taught.',
   ],
   grid: { w: 12, h: 7 },
   inputs: [
@@ -195,8 +197,8 @@ const notBoth: Level = {
   teaches: 'NAND is two inverters: invert first, then join.',
   brief: [
     'OUT is LOW only when both inputs are HIGH.',
-    'Last level you joined the inputs. Consider inverting first.',
-    'When you have it, check whether A and B survived. That distinction is about to matter.',
+    'Last level you joined first, then inverted. Try it the other way round.',
+    'When it works, check whether A and B are still separate signals. That difference is about to matter.',
   ],
   grid: { w: 14, h: 7 },
   inputs: [
@@ -225,7 +227,7 @@ const both: Level = {
   brief: [
     'OUT is HIGH only when both inputs are HIGH.',
     'You built most of this last level. It needs one more thing done to it.',
-    'De Morgan is in here somewhere. Three components will do it — the dearest of the three basic gates in this universe, and the exact inverse of what silicon charges.',
+    'That makes AND the dearest of the three basic gates here — the exact reverse of what silicon charges for them.',
   ],
   grid: { w: 16, h: 7 },
   inputs: [
@@ -254,8 +256,8 @@ const copy: Level = {
   teaches: 'A signal feeding two joins needs two copies.',
   brief: [
     'Q1 is NOR of A and B. Q2 is NOR of A and C.',
-    'Both need A. But joining A into the first NOR consumes it — A and B become one node, and there is no A left to give the second.',
-    'So you need a second A, driven independently of the first. There is more than one way to make one, and on this board they do not all cost the same.',
+    'Both need A. But joining A into the first NOR uses it up — A and B become one node, and there is no A left for the second.',
+    'So make a second A, driven separately from the first. There is more than one way, and they do not all cost the same.',
   ],
   grid: { w: 16, h: 11 },
   inputs: [
@@ -299,7 +301,7 @@ const oneOrOther: Level = {
   brief: [
     'OUT is HIGH when exactly one input is HIGH.',
     'The textbook form is (A OR B) AND NOT (A AND B). It works here, and it is worth building once. Watch what the OR half costs you, and mind which way you make it.',
-    'Then look at the tick count. There is an arrangement one tick faster for the same number of components — it never joins anything but freshly driven nets.',
+    'Then look at the tick count. There is an arrangement one tick faster for the same number of components. It only ever joins signals a component has just made.',
   ],
   grid: { w: 18, h: 12 },
   inputs: [
@@ -346,7 +348,7 @@ const halfAdder: Level = {
   teaches: 'Two bits, and the first carry.',
   brief: [
     'SUM is the low bit of A plus B. CARRY is the high bit.',
-    'Two outputs, both wanting the same two inputs. Reading is free; only joining consumes.',
+    'Two outputs, both wanting the same two inputs. Reading them costs nothing — it is joining that uses a signal up.',
   ],
   grid: { w: 16, h: 11 },
   inputs: [
@@ -382,7 +384,7 @@ const fullAdder: Level = {
   brief: [
     'Add three bits: A, B and a carry in.',
     'You already have something that adds two of them.',
-    'More than one stage can raise a carry. Work out whether two of them ever can at once — the answer decides how you combine them.',
+    'Either stage can raise a carry. Work out whether both ever can at once — the answer tells you how to combine them.',
   ],
   grid: { w: 20, h: 11 },
   inputs: [

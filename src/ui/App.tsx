@@ -9,6 +9,7 @@ import { Board } from './Board';
 import { Palette } from './Palette';
 import { Scope } from './Scope';
 import { LevelSelect } from './LevelSelect';
+import { Datasheet } from './Datasheet';
 import { DevBar } from './DevBar';
 import { DEV } from '../state/dev';
 
@@ -120,6 +121,7 @@ export function App() {
     null,
   );
   const [scopeOpen, setScopeOpen] = useState(true);
+  const [tab, setTab] = useState<'brief' | 'rules'>('brief');
 
   const level = levelId ? LEVELS_BY_ID.get(levelId) ?? null : null;
 
@@ -187,11 +189,16 @@ export function App() {
             <Metric label="A" value={best.area} par={par.area} />
           </div>
         )}
-        {level && (
-          <button className="back" onClick={() => setShowBrief(true)} aria-label="brief">
-            ?
-          </button>
-        )}
+        <button
+          className="back"
+          onClick={() => {
+            setTab(level ? 'brief' : 'rules');
+            setShowBrief(true);
+          }}
+          aria-label="brief and rules"
+        >
+          ?
+        </button>
       </header>
 
       {DEV && <DevBar />}
@@ -213,20 +220,54 @@ export function App() {
         onStep={level ? stepOnce : undefined}
       />
 
-      {level && showBrief && (
-        <div className="sheet" role="dialog" aria-label={level.title}>
+      {showBrief && (
+        <div className="sheet" role="dialog" aria-label={level ? level.title : 'rules'}>
           <div className="sheet-body">
-            <div className="eyebrow">
-              Level {LEVELS.indexOf(level) + 1} · Chapter {level.chapter}
-            </div>
-            <h2>{level.title}</h2>
-            {level.brief.map((p, i) => (
-              <p key={i}>{p}</p>
-            ))}
-            <Scope level={level} verification={null} compact />
+            {level && (
+              <div className="tabs" role="tablist">
+                <button
+                  role="tab"
+                  aria-selected={tab === 'brief'}
+                  className={tab === 'brief' ? 'sel' : ''}
+                  onClick={() => setTab('brief')}
+                >
+                  Brief
+                </button>
+                <button
+                  role="tab"
+                  aria-selected={tab === 'rules'}
+                  className={tab === 'rules' ? 'sel' : ''}
+                  onClick={() => setTab('rules')}
+                >
+                  Rules
+                </button>
+              </div>
+            )}
+
+            {level && tab === 'brief' && (
+              <>
+                <div className="eyebrow">
+                  Level {LEVELS.indexOf(level) + 1} · Chapter {level.chapter}
+                </div>
+                <h2>{level.title}</h2>
+                {level.brief.map((p, i) => (
+                  <p key={i}>{p}</p>
+                ))}
+                <Scope level={level} verification={null} compact />
+              </>
+            )}
+
+            {(!level || tab === 'rules') && (
+              <>
+                <div className="eyebrow">How this board works</div>
+                <h2>Rules</h2>
+                <Datasheet />
+              </>
+            )}
+
             <div className="sheet-actions">
               <button className="btn primary" onClick={() => setShowBrief(false)}>
-                Start
+                {level && tab === 'brief' ? 'Start' : 'Back to the board'}
               </button>
             </div>
           </div>

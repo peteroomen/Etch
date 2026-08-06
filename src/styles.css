@@ -532,3 +532,87 @@ button:focus-visible {
     transition: none !important;
   }
 }
+
+/* ---------------------------------------------------------------- datasheet */
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+.tabs button {
+  flex: 1;
+  padding: 7px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  background: var(--surface-2);
+}
+.tabs button.sel {
+  color: var(--text);
+  border-color: var(--amber);
+  background: var(--amber-soft);
+}
+
+.rules {
+  list-style: none;
+  counter-reset: rule;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+.rules li {
+  counter-increment: rule;
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 2px 8px;
+}
+.rules li::before {
+  content: counter(rule);
+  grid-row: 1 / span 2;
+  font-size: 12px;
+  color: var(--amber);
+  font-variant-numeric: tabular-nums;
+  padding-top: 2px;
+}
+.rules strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+.rules span {
+  font-size: 13px;
+  color: var(--dim);
+  max-width: 52ch;
+}
+
+.datasheet h3 {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-bottom: 8px;
+}
+.notation {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.notation > div {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 8px;
+}
+.notation dt {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--amber);
+}
+.notation dd {
+  font-size: 13px;
+  color: var(--dim);
+  max-width: 52ch;
+}
