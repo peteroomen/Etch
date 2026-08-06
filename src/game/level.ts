@@ -50,6 +50,19 @@ export interface Score {
   area: number;
 }
 
+/**
+ * A readout the level supplies, whose segments ARE its outputs.
+ *
+ * A level about showing a number should be graded on the number. Parking seven
+ * sinks next to the display and grading those would make the display a
+ * decoration, and the player would be wiring to the thing beside the answer.
+ */
+export interface DisplaySpec {
+  kind: Kind.Seg7 | Kind.Nixie;
+  x: number;
+  y: number;
+}
+
 export interface Level {
   id: string;
   chapter: number;
@@ -61,6 +74,8 @@ export interface Level {
   grid: { w: number; h: number };
   inputs: PinSpec[];
   outputs: PinSpec[];
+  /** when set, the level's outputs are this device's segment pins */
+  display?: DisplaySpec;
   /** tool and component ids the player may use */
   palette: string[];
   /** blueprint id granted on first solve */
@@ -85,6 +100,16 @@ export function createLevelWorld(level: Level, library: BlueprintLibrary): World
     placeComponent(w, Kind.Sink, p.x, p.y, p.rot ?? E, p.name);
     w.grid.locked[idx(w.grid, p.x, p.y)] = 1;
   }
+  if (level.display) {
+    const d = level.display;
+    placeComponent(w, d.kind, d.x, d.y);
+    // the whole body, not just its origin cell: a wire drawn across the face of
+    // a display would route through it on the board and under it on the screen
+    const def = KIND_DEFS[d.kind]!;
+    for (let dy = 0; dy < def.h; dy++) {
+      for (let dx = 0; dx < def.w; dx++) w.grid.locked[idx(w.grid, d.x + dx, d.y + dy)] = 1;
+    }
+  }
   rebuild(w);
   return w;
 }
@@ -92,8 +117,15 @@ export function createLevelWorld(level: Level, library: BlueprintLibrary): World
 export function inputNames(level: Level): string[] {
   return level.inputs.map((p) => p.name);
 }
+/** Sinks first, then any display's segments — both are graded the same way. */
 export function outputNames(level: Level): string[] {
-  return level.outputs.map((p) => p.name);
+  const names = level.outputs.map((p) => p.name);
+  if (level.display) {
+    for (const p of KIND_DEFS[level.display.kind]!.pins) {
+      if (p.role === 'in') names.push(p.name);
+    }
+  }
+  return names;
 }
 
 // ---------------------------------------------------------------- verification

@@ -1,11 +1,27 @@
-/** Iterate on chapter 4 reference layouts until each one verifies. */
-import { LEVELS_BY_ID } from '../src/game/levels';
+/**
+ * Iterate on reference layouts until each one verifies.
+ *
+ * A reference is where par comes from, so a layout that works but sprawls sets
+ * a par nobody should have to match. This prints the score, the failing steps
+ * and the board next to each other, so all three can be judged at once.
+ *
+ *   npx vite-node scripts/refs.ts                  every level
+ *   npx vite-node scripts/refs.ts every-digit      just one
+ *   npx vite-node scripts/refs.ts 5                a whole chapter
+ */
+import { LEVELS, LEVELS_BY_ID } from '../src/game/levels';
 import { LIBRARY } from '../src/game/blueprints';
 import { createLevelWorld, runTimeline } from '../src/game/level';
 import { render } from '../src/sim/build';
 
-const ids = process.argv.slice(2);
-for (const id of ids.length ? ids : ['hold', 'set-reset', 'gated', 'edge']) {
+const args = process.argv.slice(2);
+const ids = args.length
+  ? args.flatMap((a) =>
+      /^\d+$/.test(a) ? LEVELS.filter((l) => l.chapter === +a).map((l) => l.id) : [a],
+    )
+  : LEVELS.map((l) => l.id);
+
+for (const id of ids) {
   const level = LEVELS_BY_ID.get(id);
   if (!level) {
     console.log(`${id}: NO SUCH LEVEL`);

@@ -11,7 +11,17 @@
  * is unreachable until transistors introduce a strong low.
  */
 
-import { DIR_VEC, Dir, E, Kind, isWireFamily, kindDef, opposite, worldPins } from './kinds';
+import {
+  DIR_VEC,
+  Dir,
+  E,
+  Kind,
+  isDisplay,
+  isWireFamily,
+  kindDef,
+  opposite,
+  worldPins,
+} from './kinds';
 import { Grid, at, cellKind, cellRot, cloneGrid, createGrid, idx, inBounds, pack } from './grid';
 import { NetMap, NetTable, createNetTable, extractNets, growNets, netAtPin, netValue } from './nets';
 import { HI, LO, V, X, Z, driveBit, resolve } from './values';
@@ -698,12 +708,24 @@ export function toggleSwitch(world: World, x: number, y: number): void {
   commit(world);
 }
 
-/** Read a level output pin as a boolean. Z and X are not high. */
+/**
+ * Read a level output pin as a boolean. Z and X are not high.
+ *
+ * A display's segments are outputs too. A level whose answer is a NUMBER should
+ * be graded on the number, not on seven sinks parked beside the thing that
+ * shows it — so the segment pins answer to their own names, and the display the
+ * player is looking at is the same device the verifier reads.
+ */
 export function readOutput(world: World, name: string): boolean {
   for (const c of world.comps) {
     if (c.kind === Kind.Sink && c.pin === name) {
       return netValue(world.nets, c.inNets[0]) === HI;
     }
+  }
+  for (const c of world.comps) {
+    if (!isDisplay(c.kind)) continue;
+    const i = kindDef(c.kind)?.pins.findIndex((p) => p.role === 'in' && p.name === name) ?? -1;
+    if (i >= 0) return netValue(world.nets, c.inNets[i]) === HI;
   }
   return false;
 }

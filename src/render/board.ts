@@ -299,6 +299,67 @@ function drawGlyph(ctx: CanvasRenderingContext2D, kind: Kind, S_: number, rot: D
   ctx.restore();
 }
 
+/**
+ * A seven-segment display, lit segment by segment from the nets feeding it.
+ *
+ * Every readout before this one was a single lamp, so "did it work" was a
+ * yes-or-no light. This is the first thing on the board that shows a NUMBER,
+ * and the whole point is that the shape is not drawn by the game — it is
+ * whatever seven separate wires happen to be holding.
+ *
+ * Amber, like every live trace: a lit segment is a lit net, and the display
+ * should read as the same substance as the wire feeding it.
+ */
+function drawSeg7(
+  ctx: CanvasRenderingContext2D,
+  world: World,
+  x: number,
+  y: number,
+  rot: Dir,
+  S_: number,
+  fw: number,
+  fh: number,
+) {
+  const pins = worldPins(Kind.Seg7, x, y, rot);
+  const on = pins.map((p) => {
+    const net = pinNet(world, p.x, p.y, p.dir);
+    return net >= 0 && (world.nets.value[net] as V) === HI;
+  });
+
+  // roughly one to two, which is the proportion of a real digit — the body is
+  // 3x7 cells, so equal padding on both axes would draw something far too thin
+  const th = Math.max(2, S_ * 0.17); // segment thickness
+  const padX = fw * 0.14;
+  const padY = fh * 0.15;
+  const left = padX;
+  const right = fw - padX;
+  const top = padY;
+  const bottom = fh - padY;
+  const mid = (top + bottom) / 2;
+  const gap = th * 0.5; // so corners read as separate segments, not a box
+
+  const bar = (bx: number, by: number, bw: number, bh: number, lit: boolean) => {
+    ctx.fillStyle = lit ? T.ledOn : T.ledOff;
+    withGlow(ctx, lit, S_, () => {
+      roundRect(ctx, bx, by, bw, bh, th * 0.35);
+      ctx.fill();
+    });
+  };
+  const horiz = (cy: number, lit: boolean) =>
+    bar(left + gap, cy - th / 2, right - left - gap * 2, th, lit);
+  const vert = (cx: number, y0: number, y1: number, lit: boolean) =>
+    bar(cx - th / 2, y0 + gap, th, y1 - y0 - gap * 2, lit);
+
+  // pin order is a..g, and so is this
+  horiz(top, on[0]); //            a — top
+  vert(right, top, mid, on[1]); // b — upper right
+  vert(right, mid, bottom, on[2]); // c — lower right
+  horiz(bottom, on[3]); //         d — bottom
+  vert(left, mid, bottom, on[4]); // e — lower left
+  vert(left, top, mid, on[5]); //  f — upper left
+  horiz(mid, on[6]); //            g — middle
+}
+
 function drawComponent(ctx: CanvasRenderingContext2D, world: World, x: number, y: number, vp: Viewport) {
   const S_ = vp.cell;
   const t = Math.max(3, Math.round(S_ * TRACE));
@@ -340,6 +401,11 @@ function drawComponent(ctx: CanvasRenderingContext2D, world: World, x: number, y
   ctx.strokeStyle = lit ? T.glyphOn : T.bodyEdge;
   ctx.lineWidth = Math.max(1, S_ * 0.045);
   ctx.stroke();
+
+  if (kind === Kind.Seg7) {
+    drawSeg7(ctx, world, x, y, rot, S_, fw, fh);
+    return;
+  }
 
   if (kind === Kind.Led) {
     const cx = fw / 2;

@@ -393,5 +393,217 @@ export const CLUES: Record<string, LevelClues> = {
       "n5 = NOT(n4)"
     ],
     "exhaustive": true
+  },
+  "two-of-them": {
+    "optimum": null,
+    "par": {
+      "components": 26,
+      "ticks": 5
+    },
+    "structure": [
+      "12 of its nodes are driven by more than one thing.",
+      "One signal is read by 6 different components.",
+      "It places 2 of the blocks you have already earned.",
+      "This is a working answer, not necessarily the smallest one."
+    ],
+    "netlist": [
+      "n0 = d0",
+      "n1 = NOT(n9) | NOT(n10)",
+      "n2 = clk",
+      "n3 = d1",
+      "n4 = NOT(n15) | NOT(n16)",
+      "n5 = NOT(n2)",
+      "n6 = NOT(n7) | NOT(n8)",
+      "n7 = NOT(n0) | NOT(n5)",
+      "n8 = NOT(n6) | BUF(n5)",
+      "n9 = NOT(n6) | NOT(n2)",
+      "n10 = NOT(n1) | BUF(n2)",
+      "n11 = NOT(n2)",
+      "n12 = NOT(n13) | NOT(n14)",
+      "n13 = NOT(n3) | NOT(n11)",
+      "n14 = NOT(n12) | BUF(n11)",
+      "n15 = NOT(n12) | NOT(n2)",
+      "n16 = NOT(n4) | BUF(n2)"
+    ],
+    "exhaustive": false
+  },
+  "only-when-told": {
+    "optimum": null,
+    "par": {
+      "components": 19,
+      "ticks": 4
+    },
+    "structure": [
+      "9 of its nodes are driven by more than one thing.",
+      "One signal is read by 3 different components.",
+      "It places one of the blocks you have already earned.",
+      "This is a working answer, not necessarily the smallest one."
+    ],
+    "netlist": [
+      "n0 = d",
+      "n1 = NOT(n0) | NOT(n3)",
+      "n2 = NOT(n1) | NOT(n6)",
+      "n3 = we",
+      "n4 = NOT(n11) | NOT(n12)",
+      "n5 = clk",
+      "n6 = BUF(n3) | NOT(n4)",
+      "n7 = NOT(n5)",
+      "n8 = NOT(n9) | NOT(n10)",
+      "n9 = NOT(n2) | NOT(n7)",
+      "n10 = NOT(n8) | BUF(n7)",
+      "n11 = NOT(n8) | NOT(n5)",
+      "n12 = NOT(n4) | BUF(n5)"
+    ],
+    "exhaustive": false
+  },
+  "count-to-three": {
+    "optimum": null,
+    "par": {
+      "components": 28,
+      "ticks": 6
+    },
+    "structure": [
+      "12 of its nodes are driven by more than one thing.",
+      "One signal is read by 4 different components.",
+      "It places 2 of the blocks you have already earned.",
+      "This is a working answer, not necessarily the smallest one."
+    ],
+    "netlist": [
+      "n0 = NOT(n1)",
+      "n1 = NOT(n9) | NOT(n10)",
+      "n2 = clk",
+      "n3 = NOT(n4)",
+      "n4 = NOT(n15) | NOT(n16)",
+      "n5 = NOT(n2)",
+      "n6 = NOT(n7) | NOT(n8)",
+      "n7 = NOT(n0) | NOT(n5)",
+      "n8 = NOT(n6) | BUF(n5)",
+      "n9 = NOT(n6) | NOT(n2)",
+      "n10 = NOT(n1) | BUF(n2)",
+      "n11 = NOT(n0)",
+      "n12 = NOT(n13) | NOT(n14)",
+      "n13 = NOT(n3) | NOT(n11)",
+      "n14 = NOT(n12) | BUF(n11)",
+      "n15 = NOT(n12) | NOT(n0)",
+      "n16 = NOT(n4) | BUF(n0)"
+    ],
+    "exhaustive": true
+  },
+  "one-of-four": {
+    "optimum": null,
+    "par": {
+      "components": 12,
+      "ticks": 2
+    },
+    "structure": [
+      "4 of its nodes are driven by more than one thing.",
+      "One signal is read by 4 different components.",
+      "This is a working answer, not necessarily the smallest one."
+    ],
+    "netlist": [
+      "n0 = a",
+      "n1 = BUF(n0) | BUF(n3)",
+      "n2 = NOT(n1)",
+      "n3 = b",
+      "n4 = NOT(n0) | BUF(n3)",
+      "n5 = NOT(n4)",
+      "n6 = BUF(n0) | NOT(n3)",
+      "n7 = NOT(n6)",
+      "n8 = NOT(n0) | NOT(n3)",
+      "n9 = NOT(n8)"
+    ],
+    "exhaustive": true
+  },
+  "naught-and-one": {
+    "optimum": {
+      "parts": 3,
+      "depth": 3
+    },
+    "par": {
+      "components": 3,
+      "ticks": 1
+    },
+    "structure": [
+      "No node is driven by more than one thing.",
+      "One signal is read by 2 different components."
+    ],
+    "netlist": [
+      "n0 = x",
+      "n1 = NOT(n0)",
+      "n2 = OR(n0,n1)",
+      "n3 = NOT(n2)"
+    ],
+    "exhaustive": true
+  },
+  "every-digit": {
+    "optimum": null,
+    "par": {
+      "components": 8,
+      "ticks": 1
+    },
+    "structure": [
+      "3 of its nodes are driven by more than one thing.",
+      "One signal is read by 3 different components.",
+      "This is a working answer, not necessarily the smallest one."
+    ],
+    "netlist": [
+      "n0 = n0",
+      "n1 = n1",
+      "n2 = n2",
+      "n3 = n3",
+      "n4 = NOT(n1)",
+      "n5 = NOT(n1) | BUF(n1)",
+      "n6 = NOT(n2)",
+      "n7 = BUF(n0) | BUF(n2)",
+      "n8 = BUF(n2) | BUF(n3)"
+    ],
+    "exhaustive": false
+  },
+  "show-the-count": {
+    "optimum": null,
+    "par": {
+      "components": 49,
+      "ticks": 8
+    },
+    "structure": [
+      "19 of its nodes are driven by more than one thing.",
+      "One signal is read by 6 different components.",
+      "It places 3 of the blocks you have already earned.",
+      "This is a working answer, not necessarily the smallest one."
+    ],
+    "netlist": [
+      "n0 = clk",
+      "n1 = NOT(n19) | NOT(n20)",
+      "n2 = NOT(n27)",
+      "n3 = NOT(n4)",
+      "n4 = NOT(n28)",
+      "n5 = NOT(n4) | BUF(n4)",
+      "n6 = NOT(n25) | NOT(n26)",
+      "n7 = NOT(n29)",
+      "n8 = NOT(n7)",
+      "n9 = NOT(n30)",
+      "n10 = BUF(n2) | BUF(n7)",
+      "n11 = BUF(n2)",
+      "n12 = BUF(n7) | BUF(n9)",
+      "n13 = NOT(n1)",
+      "n14 = NOT(n6)",
+      "n15 = NOT(n0)",
+      "n16 = NOT(n17) | NOT(n18)",
+      "n17 = NOT(n13) | NOT(n15)",
+      "n18 = NOT(n16) | BUF(n15)",
+      "n19 = NOT(n16) | NOT(n0)",
+      "n20 = NOT(n1) | BUF(n0)",
+      "n21 = NOT(n13)",
+      "n22 = NOT(n23) | NOT(n24)",
+      "n23 = NOT(n14) | NOT(n21)",
+      "n24 = NOT(n22) | BUF(n21)",
+      "n25 = NOT(n22) | NOT(n13)",
+      "n26 = NOT(n6) | BUF(n13)",
+      "n27 = BUF(n1) | BUF(n6)",
+      "n28 = NOT(n1) | BUF(n6)",
+      "n29 = BUF(n1) | NOT(n6)",
+      "n30 = NOT(n1) | NOT(n6)"
+    ],
+    "exhaustive": false
   }
 };

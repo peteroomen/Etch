@@ -11,8 +11,8 @@
  * is the chapter's lesson.
  */
 
-import { N, S } from '../sim/kinds';
-import { buf, inv, path, run } from '../sim/build';
+import { Kind, N, S, W } from '../sim/kinds';
+import { bp, buf, inv, path, run } from '../sim/build';
 import { placeBlueprint } from '../sim/world';
 import { Level, stepTimeline, truthTimeline } from './level';
 
@@ -738,6 +738,439 @@ const divide: Level = {
   },
 };
 
+// ------------------------------------------------------------------ chapter 5
+
+/**
+ * Chapter 5 is width, counting, and the first thing on the board that shows a
+ * NUMBER rather than a light.
+ *
+ * Two of its levels cannot be reset. A counter has no load input, so it starts
+ * from wherever the tick rule's tie-break puts it — safe only because a tile's
+ * insides are emitted in the same order however it is placed, which the offsets
+ * test in chapter5.test.ts is there to keep true.
+ */
+
+const SEG = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+
+/** Which segments each digit lights. The ordinary shapes, not invented ones. */
+const DIGIT: Record<number, string> = {
+  0: 'abcdef',
+  1: 'bc',
+  2: 'abdeg',
+  3: 'abcdg',
+};
+
+const litFor = (digit: number): boolean[] => SEG.map((s) => DIGIT[digit].includes(s));
+
+const twoOfThem: Level = {
+  id: 'two-of-them',
+  chapter: 5,
+  title: 'Two of them',
+  teaches: 'A register is one flip-flop per bit, on one clock.',
+  brief: [
+    'Q0 follows D0 and Q1 follows D1, both taking their new value on the same rising edge.',
+    'Nothing new to invent. The only question is what the clock has to reach, and what that costs you.',
+  ],
+  grid: { w: 16, h: 11 },
+  inputs: [
+    { name: 'd0', x: 0, y: 1 },
+    { name: 'd1', x: 0, y: 5 },
+    { name: 'clk', x: 0, y: 9 },
+  ],
+  outputs: [
+    { name: 'q0', x: 15, y: 2 },
+    { name: 'q1', x: 15, y: 6 },
+  ],
+  palette: [...WIRE_X, 'not', 'buf', 'dff'],
+  unlocks: 'reg2',
+  timeline: steps(
+    ['d0', 'd1', 'clk'],
+    ['q0', 'q1'],
+    [
+      { in: [0, 0, 0], out: [null, null] }, // nothing loaded yet
+      { in: [1, 0, 1], out: [1, 0] }, // the rise takes both bits
+      { in: [0, 1, 0], out: [1, 0] }, // and they hold across the fall
+      { in: [0, 1, 1], out: [0, 1] }, // the bits are independent
+      { in: [1, 1, 0], out: [0, 1] },
+      { in: [1, 1, 1], out: [1, 1] },
+      { in: [0, 0, 0], out: [1, 1] },
+      { in: [0, 0, 1], out: [0, 0] },
+    ],
+  ),
+  reference: (w) => {
+    run(w, 1, 1, 9, 1); // d0
+    run(w, 1, 5, 9, 5); // d1
+    bp(w, 'dff', 10, 1);
+    bp(w, 'dff', 10, 5);
+
+    // one clock net, read twice: the second flip-flop costs a wire, not a copy
+    path(w, [1, 9], [7, 9], [7, 3], [9, 3]); // crossing d1 on the way up
+    path(w, [7, 7], [9, 7]);
+
+    run(w, 12, 2, 14, 2);
+    run(w, 12, 6, 14, 6);
+  },
+};
+
+const onlyWhenTold: Level = {
+  id: 'only-when-told',
+  chapter: 5,
+  title: 'Only when told',
+  teaches: 'A register that ignores the clock unless it is addressed.',
+  brief: [
+    'Q takes D on a rising edge, but only while WE is HIGH. With WE LOW the edge must change nothing.',
+    'You cannot stop the clock — every register in a machine shares one.',
+    'So give the flip-flop something harmless to swallow instead.',
+  ],
+  grid: { w: 18, h: 12 },
+  inputs: [
+    { name: 'd', x: 0, y: 1 },
+    { name: 'we', x: 0, y: 3 },
+    { name: 'clk', x: 0, y: 11 },
+  ],
+  outputs: [{ name: 'q', x: 17, y: 4 }],
+  palette: [...WIRE_X, 'not', 'buf', 'dff'],
+  unlocks: 'regwe',
+  timeline: steps(
+    ['d', 'we', 'clk'],
+    ['q'],
+    [
+      { in: [0, 1, 0], out: [null] },
+      { in: [0, 1, 1], out: [0] }, // written
+      { in: [1, 1, 0], out: [0] },
+      { in: [1, 1, 1], out: [1] }, // written
+      { in: [0, 0, 0], out: [1] },
+      { in: [0, 0, 1], out: [1] }, // an edge with WE low changes nothing
+      { in: [1, 0, 0], out: [1] },
+      { in: [1, 0, 1], out: [1] }, // nor does this one
+      { in: [0, 1, 0], out: [1] },
+      { in: [0, 1, 1], out: [0] }, // written again
+      { in: [1, 0, 0], out: [0] },
+      { in: [1, 0, 1], out: [0] },
+    ],
+  ),
+  /**
+   * A two-way switch in front of the flip-flop:
+   *
+   *   n4 = NOT(d)  | NOT(we)          n6 = NOT(n4) | NOT(n5)
+   *   n5 = NOT(q)  | BUF(we)          q  = flip-flop(n6, clk)
+   *
+   * NOT(n4) is d AND we, NOT(n5) is q AND NOT we, and the merge of the two is
+   * the OR that picks between them — free, because both are fresh driven nets.
+   * With WE low the flip-flop is handed its own output, so the edge writes back
+   * what was already there.
+   */
+  reference: (w) => {
+    run(w, 1, 1, 3, 1); // d
+    run(w, 1, 3, 3, 3); // we
+    inv(w, 4, 1);
+    inv(w, 4, 3);
+    path(w, [5, 1], [5, 3]); // n4
+    inv(w, 6, 2); // d AND we
+
+    path(w, [2, 3], [2, 6]); // we, tapped for the other arm
+    buf(w, 2, 7, S);
+
+    path(w, [14, 4], [14, 8], [6, 8]); // q, back round the bottom
+    inv(w, 5, 8, W); // NOT(q)
+    run(w, 2, 8, 4, 8); // n5: the two arms of the switch meet
+    inv(w, 3, 9, S); // q AND NOT we
+
+    run(w, 7, 2, 9, 2); // n6, joined from both arms
+    path(w, [9, 2], [9, 10], [3, 10]);
+    run(w, 9, 3, 10, 3);
+
+    path(w, [1, 11], [8, 11], [8, 5], [10, 5]); // clk, up the outside and back in
+    bp(w, 'dff', 11, 3);
+    run(w, 13, 4, 16, 4);
+  },
+};
+
+const countToThree: Level = {
+  id: 'count-to-three',
+  chapter: 5,
+  title: 'Count to three',
+  teaches: 'Chain two dividers and you are counting.',
+  brief: [
+    'Q0 and Q1 are the two bits of a number that goes 0, 1, 2, 3 and starts again, one step per rising edge.',
+    'You built the low bit last chapter — it halves the clock.',
+    'The high bit wants its own clock, and there is already a signal on the board ticking at the right speed.',
+  ],
+  grid: { w: 18, h: 11 },
+  inputs: [{ name: 'clk', x: 0, y: 5 }],
+  outputs: [
+    { name: 'q0', x: 17, y: 2 },
+    { name: 'q1', x: 17, y: 7 },
+  ],
+  palette: [...WIRE_X, 'not', 'dff'],
+  unlocks: 'count2',
+  timeline: steps(
+    ['clk'],
+    ['q0', 'q1'],
+    [
+      { in: [0], out: [0, 0] },
+      { in: [1], out: [1, 0] }, // 1
+      { in: [0], out: [1, 0] },
+      { in: [1], out: [0, 1] }, // 2
+      { in: [0], out: [0, 1] },
+      { in: [1], out: [1, 1] }, // 3
+      { in: [0], out: [1, 1] },
+      { in: [1], out: [0, 0] }, // and round again
+      { in: [0], out: [0, 0] },
+    ],
+  ),
+  /**
+   * NOT(q0) does both jobs. It is the low flip-flop's own D, which is what makes
+   * it toggle, and it is the high flip-flop's clock — so the high bit steps
+   * every time q0 falls, which is every second step of the low bit.
+   */
+  reference: (w) => {
+    bp(w, 'dff', 8, 1);
+    bp(w, 'dff', 8, 6);
+    run(w, 10, 2, 16, 2); // q0
+    run(w, 10, 7, 16, 7); // q1
+
+    path(w, [12, 2], [12, 4], [4, 4]); // q0 back to the left
+    path(w, [1, 5], [6, 5], [6, 3], [7, 3]); // the clock, crossing it
+    inv(w, 3, 4, W);
+
+    // one net, two jobs: the low bit's own D, and the high bit's clock
+    path(w, [2, 4], [2, 1], [7, 1]);
+    path(w, [2, 4], [2, 8], [7, 8]); // crossing the clock on the way down
+
+    path(w, [12, 7], [12, 9], [6, 9]); // q1 back
+    inv(w, 5, 9, W);
+    path(w, [4, 9], [4, 6], [7, 6]); // NOT(q1) as the high bit's D
+  },
+};
+
+const oneOfFour: Level = {
+  id: 'one-of-four',
+  chapter: 5,
+  title: 'One of four',
+  teaches: 'A two-bit number, turned into four lines.',
+  brief: [
+    'A and B are the two bits of a number. Exactly one of the four outputs is HIGH: the one the number names.',
+    'Each line has to check both bits. Nothing is stopping two lines checking the same bit — reading is free.',
+    'What is not free is joining. Every line wants its own copy of what it merges.',
+  ],
+  grid: { w: 18, h: 14 },
+  inputs: [
+    { name: 'a', x: 0, y: 1 },
+    { name: 'b', x: 0, y: 12 },
+  ],
+  outputs: [
+    { name: 'n0', x: 17, y: 2 },
+    { name: 'n1', x: 17, y: 5 },
+    { name: 'n2', x: 17, y: 8 },
+    { name: 'n3', x: 17, y: 11 },
+  ],
+  palette: [...WIRE_X, 'not', 'buf', 'or'],
+  unlocks: 'dec24',
+  timeline: truthTimeline(['a', 'b'], ['n0', 'n1', 'n2', 'n3'], ([a, b]) => [
+    !a && !b,
+    a && !b,
+    !a && b,
+    a && b,
+  ]),
+  /**
+   * Four NORs, which is the cheapest gate here: a merge costs nothing and the
+   * inverter over it costs one. Each line needs its OWN copy of each bit,
+   * because the merge that makes the NOR consumes what it merges — so the two
+   * rails down the left are read eight times and joined never.
+   */
+  reference: (w) => {
+    path(w, [1, 1], [2, 1], [2, 13]); // rail a
+    path(w, [1, 12], [3, 12]); // b, crossing it
+    path(w, [3, 12], [3, 3]); // rail b
+
+    // row, what each copy does: NOR(±a, ±b) is one line of the decoder
+    const lines: [number, 'not' | 'buf', 'not' | 'buf'][] = [
+      [2, 'buf', 'buf'], // n0 = NOT a AND NOT b
+      [5, 'not', 'buf'], // n1 =     a AND NOT b
+      [8, 'buf', 'not'], // n2 = NOT a AND     b
+      [11, 'not', 'not'], // n3 =     a AND     b
+    ];
+    for (const [row, ka, kb] of lines) {
+      run(w, 2, row, 4, row); // a, crossing rail b
+      (ka === 'not' ? inv : buf)(w, 5, row);
+      run(w, 3, row + 1, 4, row + 1); // b
+      (kb === 'not' ? inv : buf)(w, 5, row + 1);
+      path(w, [6, row], [6, row + 1]); // the merge, and the OR it buys
+      inv(w, 7, row);
+      run(w, 8, row, 16, row);
+    }
+  },
+};
+
+const naughtAndOne: Level = {
+  id: 'naught-and-one',
+  chapter: 5,
+  title: 'Naught and one',
+  teaches: 'Seven lamps in the shape of a digit.',
+  brief: [
+    'The display has seven segments and seven wires. Light the ones that draw a 0 when X is LOW, and a 1 when X is HIGH.',
+    'One segment is dark in both digits. It needs nothing at all — a wire nobody drives is already LOW.',
+    'Two are lit in both. There is no HIGH to wire them to, so you will have to make one.',
+  ],
+  grid: { w: 13, h: 10 },
+  inputs: [{ name: 'x', x: 0, y: 5 }],
+  outputs: [],
+  display: { kind: Kind.Seg7, x: 10, y: 2 },
+  palette: [...WIRE_X, 'not', 'buf'],
+  timeline: truthTimeline(['x'], SEG, ([x]) => litFor(x ? 1 : 0)),
+  /**
+   * Four segments want NOT(x) and they share ONE inverter, because a driven net
+   * may be read by as many things as like. Two want a constant HIGH, and the
+   * cheapest constant in this substrate is a signal merged with its own
+   * inverse: NOT(x) OR x is true whatever x is doing.
+   */
+  reference: (w) => {
+    run(w, 1, 5, 3, 5);
+    inv(w, 4, 5); // NOT(x): segments a, d, e and f
+    run(w, 5, 5, 8, 5);
+    path(w, [8, 2], [8, 7]);
+    run(w, 8, 2, 9, 2); // a
+    run(w, 8, 5, 9, 5); // d
+    run(w, 8, 6, 9, 6); // e
+    run(w, 8, 7, 9, 7); // f
+
+    path(w, [3, 5], [3, 2]); // x, tapped upward
+    buf(w, 4, 2);
+    inv(w, 4, 3);
+    path(w, [5, 2], [5, 3]); // NOT(x) OR x — lit whatever x does
+    run(w, 5, 3, 7, 3);
+    path(w, [7, 3], [7, 4]);
+    run(w, 7, 3, 9, 3); // b, crossing the other line
+    run(w, 7, 4, 9, 4); // c
+    // g is lit by neither digit, so nothing drives it
+  },
+};
+
+const everyDigit: Level = {
+  id: 'every-digit',
+  chapter: 5,
+  title: 'Every digit',
+  teaches: 'A diode matrix: one line per digit, one column per segment.',
+  brief: [
+    'Exactly one of N0 to N3 is HIGH, naming a digit. Draw that digit.',
+    'Work one segment at a time, not one digit at a time. Ask which lines light this segment, and wire that.',
+    'One segment is another segment. One is lit for every digit but one. One is lit for all four, and one needs no component at all.',
+  ],
+  grid: { w: 19, h: 14 },
+  inputs: [
+    { name: 'n0', x: 0, y: 0 },
+    { name: 'n1', x: 0, y: 1 },
+    { name: 'n2', x: 0, y: 2 },
+    { name: 'n3', x: 0, y: 3 },
+  ],
+  outputs: [],
+  display: { kind: Kind.Seg7, x: 16, y: 4 },
+  palette: [...WIRE_X, 'not', 'buf'],
+  unlocks: 'digit4',
+  /**
+   * Only the four one-hot cases. Anything else cannot reach this circuit — a
+   * decoder is what feeds it — and demanding an answer for input the machine
+   * never produces would make the level harder for no reason at all.
+   */
+  timeline: steps(
+    ['n0', 'n1', 'n2', 'n3'],
+    SEG,
+    [0, 1, 2, 3].map((digit) => ({
+      in: [0, 1, 2, 3].map((i) => (i === digit ? 1 : 0)),
+      out: litFor(digit).map((v) => (v ? 1 : 0)),
+    })),
+  ),
+  /**
+   * Four rails down the left, read as often as they like, joined never.
+   *
+   *   a, d  NOT(n1)         one net, read by two segments
+   *   b     NOT(n1) | n1    HIGH by construction: cheaper than merging all four
+   *   c     NOT(n2)
+   *   e     n0 | n2
+   *   f     n0              no component: the rail already is the answer
+   *   g     n2 | n3
+   */
+  reference: (w) => {
+    // n0 runs one row deeper than the rest so its last tap can pass under them
+    path(w, [1, 0], [4, 0], [4, 13]); // n0
+    path(w, [1, 1], [5, 1], [5, 12]); // n1
+    path(w, [1, 2], [6, 2], [6, 12]); // n2
+    path(w, [1, 3], [7, 3], [7, 12]); // n3
+
+    /** one component at x=9, fed east off a rail. */
+    const tap = (rail: number, row: number, kind: 'not' | 'buf') => {
+      run(w, rail, row, 8, row);
+      (kind === 'not' ? inv : buf)(w, 9, row);
+    };
+
+    tap(5, 4, 'not'); //  a and d
+    tap(5, 5, 'not'); //  b ┐
+    tap(6, 6, 'not'); //  c
+    tap(5, 8, 'buf'); //  b ┘
+    tap(4, 9, 'buf'); //  e ┐
+    tap(6, 10, 'buf'); // e ┘
+    tap(6, 11, 'buf'); // g ┐
+    tap(7, 12, 'buf'); // g ┘
+
+    path(w, [10, 4], [12, 4], [12, 7]); // a and d off one net
+    run(w, 12, 4, 15, 4);
+    run(w, 12, 7, 15, 7);
+
+    path(w, [10, 5], [11, 5], [11, 8], [10, 8]); // b
+    run(w, 11, 5, 15, 5);
+
+    run(w, 10, 6, 15, 6); // c
+
+    path(w, [10, 9], [10, 10]); // e: the two copies meet where they leave
+    path(w, [10, 9], [13, 9], [13, 8]);
+    run(w, 13, 8, 15, 8);
+
+    path(w, [10, 11], [10, 12]); // g
+    path(w, [10, 11], [12, 11], [12, 10]);
+    run(w, 12, 10, 15, 10);
+
+    run(w, 4, 13, 14, 13); // f, straight off the n0 rail
+    path(w, [14, 13], [14, 9]);
+    run(w, 14, 9, 15, 9);
+  },
+};
+
+const showTheCount: Level = {
+  id: 'show-the-count',
+  chapter: 5,
+  title: 'Show the count',
+  teaches: 'Everything you built, counting on a display.',
+  brief: [
+    'One clock in. A digit out, counting 0, 1, 2, 3 and starting again.',
+    'You have all three pieces. This is the wiring.',
+  ],
+  grid: { w: 18, h: 9 },
+  inputs: [{ name: 'clk', x: 0, y: 1 }],
+  outputs: [],
+  display: { kind: Kind.Seg7, x: 15, y: 1 },
+  palette: [...WIRE_X, 'not', 'buf', 'count2', 'dec24', 'digit4'],
+  timeline: steps(
+    ['clk'],
+    SEG,
+    [0, 1, 0, 1, 0, 1, 0, 1, 0].map((clk, i) => ({
+      in: [clk],
+      // 0,1,1,2,2,3,3,0,0 — the count only moves on a rise
+      out: litFor(Math.floor((i + 1) / 2) % 4).map((v) => (v ? 1 : 0)),
+    })),
+  ),
+  reference: (w) => {
+    run(w, 1, 1, 2, 1);
+    bp(w, 'count2', 3, 1);
+    run(w, 5, 1, 6, 1); // q0 into the decoder's low bit
+    path(w, [5, 3], [6, 3], [6, 5]); // q1 into its high bit
+    bp(w, 'dec24', 7, 1);
+    for (let r = 1; r <= 4; r++) run(w, 9, r, 10, r); // the four lines
+    bp(w, 'digit4', 11, 1);
+    for (let r = 1; r <= 7; r++) run(w, 13, r, 14, r); // the seven segments
+  },
+};
+
 export const LEVELS: Level[] = [
   continuity,
   invert,
@@ -757,6 +1190,13 @@ export const LEVELS: Level[] = [
   gated,
   edge,
   divide,
+  twoOfThem,
+  onlyWhenTold,
+  countToThree,
+  oneOfFour,
+  naughtAndOne,
+  everyDigit,
+  showTheCount,
 ];
 
 export const LEVELS_BY_ID = new Map(LEVELS.map((l) => [l.id, l]));

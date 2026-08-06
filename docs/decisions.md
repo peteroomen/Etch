@@ -367,3 +367,24 @@ the menu, picks palette chips, drags wires on the canvas, and asserts against
 the world the app actually built. Every one of the six bugs above was found by
 playing, and none of them could have been caught by the unit tests, which prove
 the simulator rather than the game. Twenty-one assertions, run against `dist`.
+
+### The display is an output device, not a decoration
+A level about showing a number should be graded on the number. `Level.display`
+places a locked `Kind.Seg7` and `readOutput` answers to its segment pins by
+name, so the device the player is looking at is the device the verifier reads.
+The alternative — seven sinks parked beside the display — would have had people
+wiring to the thing next to the answer.
+
+Its pins moved to one edge at the same time. Four west and three east is how a
+real package is built, and it turns a puzzle about which segments to light into
+a puzzle about routing three wires around the back of a part. Seven pins down
+the west edge of a 3x7 body means a driver's outputs meet them as seven straight
+wires, and the body is still digit-shaped.
+
+### A tile cannot share a wire with the board
+Segment `f` is lit for digit 0 alone, so on a board it is `n0` — a wire, costing
+nothing. Packaged as `digit4` it costs a buffer, because a blueprint's `netMap`
+has no way to say "this output pin and that input pin are the same host net".
+The tile bills nine where the hand-built matrix bills eight, and that gap is
+left visible rather than papered over: packaging has a price here, and a player
+who builds it themselves should get the better score.

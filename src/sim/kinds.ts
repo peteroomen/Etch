@@ -75,6 +75,11 @@ export function isActive(k: Kind): boolean {
   return k === Kind.Inverter || k === Kind.Delay || k === Kind.Or;
 }
 
+/** Multi-pin readouts. They drive nothing; every pin is a segment to light. */
+export function isDisplay(k: Kind): boolean {
+  return k === Kind.Seg7 || k === Kind.Nixie;
+}
+
 export interface PinDef {
   /** cell offset within the component's footprint, before rotation */
   dx: number;
@@ -99,17 +104,23 @@ function io(name: string, dir: Dir, role: 'in' | 'out'): PinDef {
   return { dx: 0, dy: 0, dir, role, name };
 }
 
-/** Seven segments down the west edge and up the east edge of a 2x4 body. */
+/**
+ * Seven segments, one per row down the west edge of a 3x7 body.
+ *
+ * A real display has pins on both sides of the package, and this had them that
+ * way. But a puzzle about lighting a digit should be about which segments to
+ * light, not about routing three wires around the back of the part — so every
+ * segment answers from the same edge, in order, and a driver's outputs can meet
+ * them as seven straight wires.
+ */
 function seg7Pins(): PinDef[] {
-  const names = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
-  const pins: PinDef[] = [];
-  for (let i = 0; i < 4; i++) {
-    pins.push({ dx: 0, dy: i, dir: W, role: 'in', name: names[i] });
-  }
-  for (let i = 0; i < 3; i++) {
-    pins.push({ dx: 1, dy: i, dir: E, role: 'in', name: names[4 + i] });
-  }
-  return pins;
+  return ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((name, i) => ({
+    dx: 0,
+    dy: i,
+    dir: W,
+    role: 'in' as const,
+    name,
+  }));
 }
 
 /** Ten one-hot cathodes, five down each side of a 2x5 body — a 74141's worth. */
@@ -196,8 +207,8 @@ export const KIND_DEFS: Partial<Record<Kind, KindDef>> = {
   [Kind.Seg7]: {
     kind: Kind.Seg7,
     label: '7-SEG',
-    w: 2,
-    h: 4,
+    w: 3,
+    h: 7,
     rotatable: false,
     pins: seg7Pins(),
   },

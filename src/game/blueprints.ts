@@ -274,6 +274,185 @@ const dff: Blueprint = {
   ],
 };
 
+/**
+ * A 2-bit register: two flip-flops sharing one clock.
+ *
+ * There is no cleverness here and that is the lesson. Width costs exactly what
+ * it looks like it costs — one flip-flop per bit — and the clock is FREE to
+ * widen, because reading a net never consumes it. Every register in every
+ * machine is this, repeated.
+ */
+const reg2: Blueprint = {
+  id: 'reg2',
+  label: 'REG2',
+  name: '2-bit register',
+  w: 2,
+  h: 4,
+  nets: 5,
+  pins: [
+    { name: 'd0', dx: 0, dy: 0, dir: W, role: 'in', net: 0 },
+    { name: 'd1', dx: 0, dy: 1, dir: W, role: 'in', net: 1 },
+    { name: 'clk', dx: 0, dy: 3, dir: W, role: 'in', net: 2 },
+    { name: 'q0', dx: 1, dy: 0, dir: E, role: 'out', net: 3 },
+    { name: 'q1', dx: 1, dy: 1, dir: E, role: 'out', net: 4 },
+  ],
+  parts: [],
+  subs: [
+    { id: 'dff', netMap: [0, 2, 3] },
+    { id: 'dff', netMap: [1, 2, 4] },
+  ],
+};
+
+/**
+ * A register that only takes a new value when it is told to.
+ *
+ * The front of it is a two-way switch: feed the flip-flop the new bit while WE
+ * is high, and its own output while WE is low, so an unwanted clock edge just
+ * writes back what was already there. That is how a real register file works —
+ * the clock reaches every register, and the enable decides which one moves.
+ *
+ * The two arms cost three components each, and the OR that joins them costs
+ * nothing: both are fresh inverter outputs, so merging them is free.
+ */
+const regwe: Blueprint = {
+  id: 'regwe',
+  label: 'REGW',
+  name: 'register with enable',
+  w: 2,
+  h: 4,
+  nets: 7,
+  pins: [
+    { name: 'd', dx: 0, dy: 0, dir: W, role: 'in', net: 0 },
+    { name: 'we', dx: 0, dy: 1, dir: W, role: 'in', net: 1 },
+    { name: 'clk', dx: 0, dy: 3, dir: W, role: 'in', net: 2 },
+    { name: 'q', dx: 1, dy: 1, dir: E, role: 'out', net: 3 },
+  ],
+  parts: [
+    inv(0, 4), // ¬d  ┐
+    inv(1, 4), // ¬we ┴─ net 4
+    inv(4, 6), //        ¬net4 = d ∧ we      ┐
+    inv(3, 5), // ¬q  ┐                      │
+    buf(1, 5), //  we ┴─ net 5               │
+    inv(5, 6), //        ¬net5 = q ∧ ¬we     ┴─ net 6, and the merge is the OR
+  ],
+  subs: [{ id: 'dff', netMap: [6, 2, 3] }],
+};
+
+/**
+ * A 2-bit counter — two toggling flip-flops, the second clocked by the first.
+ *
+ * NOT(q0) does two jobs at once: it is the first flip-flop's own D, which is
+ * what makes it toggle, and it is the second flip-flop's CLOCK. Reading a net
+ * costs nothing, so the second job is free. The second stage therefore steps
+ * every time q0 falls, which is every second clock — counting 0, 1, 2, 3.
+ *
+ * This is a RIPPLE counter: the stages move one after another rather than
+ * together, and the deeper the chain the longer the wave takes to reach the
+ * end. Twenty-eight components, eleven ticks for two bits.
+ */
+const count2: Blueprint = {
+  id: 'count2',
+  label: 'CNT2',
+  name: '2-bit counter',
+  w: 2,
+  h: 4,
+  nets: 5,
+  pins: [
+    { name: 'clk', dx: 0, dy: 0, dir: W, role: 'in', net: 0 },
+    { name: 'q0', dx: 1, dy: 0, dir: E, role: 'out', net: 1 },
+    { name: 'q1', dx: 1, dy: 2, dir: E, role: 'out', net: 2 },
+  ],
+  parts: [inv(1, 3), inv(2, 4)],
+  subs: [
+    { id: 'dff', netMap: [3, 0, 1] }, // toggles on every clock
+    { id: 'dff', netMap: [4, 3, 2] }, // toggles when q0 falls
+  ],
+};
+
+/**
+ * 2-to-4 decoder: turns a two-bit number into four lines, exactly one high.
+ *
+ * Four NORs, and a NOR is the cheapest gate here — one inverter over a merge.
+ * Each line needs its own copy of each input because merging consumes what it
+ * merges, so the buffers are not waste, they are the price of the fan-out.
+ *
+ * Twelve components, two ticks. One-hot output is what makes the display cheap
+ * later: a segment lit for three digits out of four is a single inverter.
+ */
+const dec24: Blueprint = {
+  id: 'dec24',
+  label: 'DEC',
+  name: '2-to-4 decoder',
+  w: 2,
+  h: 5,
+  nets: 10,
+  pins: [
+    { name: 'a', dx: 0, dy: 0, dir: W, role: 'in', net: 0 },
+    { name: 'b', dx: 0, dy: 4, dir: W, role: 'in', net: 1 },
+    { name: 'n0', dx: 1, dy: 0, dir: E, role: 'out', net: 2 },
+    { name: 'n1', dx: 1, dy: 1, dir: E, role: 'out', net: 3 },
+    { name: 'n2', dx: 1, dy: 2, dir: E, role: 'out', net: 4 },
+    { name: 'n3', dx: 1, dy: 3, dir: E, role: 'out', net: 5 },
+  ],
+  parts: [
+    buf(0, 6), buf(1, 6), inv(6, 2), // NOR(a, b)   = ¬a ∧ ¬b  -> 0
+    inv(0, 7), buf(1, 7), inv(7, 3), // NOR(¬a, b)  =  a ∧ ¬b  -> 1
+    buf(0, 8), inv(1, 8), inv(8, 4), // NOR(a, ¬b)  = ¬a ∧  b  -> 2
+    inv(0, 9), inv(1, 9), inv(9, 5), // NOR(¬a, ¬b) =  a ∧  b  -> 3
+  ],
+};
+
+/**
+ * Four one-hot lines in, seven segments out — a digit, drawn in wire.
+ *
+ * This is a diode ROM, which is how the job was really done before anyone had
+ * a chip to do it: one row per digit, one column per segment, and a diode
+ * wherever the row lights the column. A buffer is this substrate's diode. It
+ * makes a driven copy, which is exactly what stops the columns feeding back
+ * into each other and lighting the wrong digit.
+ *
+ * The savings come from one-hot, and there are three of them worth naming.
+ * A segment lit for every digit but one is a single inverter reading the odd
+ * one out. Segments `a` and `d` are the same signal, so they share a net rather
+ * than an inverter each. And `b`, which is lit for all four digits, is not four
+ * copies merged — it is ¬n1 merged with n1, which is HIGH by construction and
+ * costs two components instead of four.
+ *
+ * Nine components for a digit.
+ */
+const digit4: Blueprint = {
+  id: 'digit4',
+  label: 'DIG',
+  name: 'segment matrix',
+  w: 2,
+  h: 7,
+  nets: 10,
+  pins: [
+    { name: 'n0', dx: 0, dy: 0, dir: W, role: 'in', net: 0 },
+    { name: 'n1', dx: 0, dy: 1, dir: W, role: 'in', net: 1 },
+    { name: 'n2', dx: 0, dy: 2, dir: W, role: 'in', net: 2 },
+    { name: 'n3', dx: 0, dy: 3, dir: W, role: 'in', net: 3 },
+    { name: 'a', dx: 1, dy: 0, dir: E, role: 'out', net: 4 },
+    { name: 'b', dx: 1, dy: 1, dir: E, role: 'out', net: 5 },
+    { name: 'c', dx: 1, dy: 2, dir: E, role: 'out', net: 6 },
+    { name: 'd', dx: 1, dy: 3, dir: E, role: 'out', net: 4 }, // the same line as a
+    { name: 'e', dx: 1, dy: 4, dir: E, role: 'out', net: 7 },
+    { name: 'f', dx: 1, dy: 5, dir: E, role: 'out', net: 8 },
+    { name: 'g', dx: 1, dy: 6, dir: E, role: 'out', net: 9 },
+  ],
+  parts: [
+    inv(1, 4), //             a and d: every digit but 1
+    inv(1, 5), buf(1, 5), //  b: ¬n1 ∨ n1, which is every digit there is
+    inv(2, 6), //             c: every digit but 2
+    buf(0, 7), buf(2, 7), //  e: 0 and 2
+    buf(2, 9), buf(3, 9), //  g: 2 and 3
+    // f is lit for 0 alone. On a board that is a wire and costs nothing; a tile
+    // cannot share one of its own input nets with the outside, so it pays a
+    // buffer for the privilege of being a tile.
+    buf(0, 8),
+  ],
+};
+
 export const BLUEPRINTS: Blueprint[] = [
   nor2,
   nand2,
@@ -285,6 +464,11 @@ export const BLUEPRINTS: Blueprint[] = [
   srlatch,
   dlatch,
   dff,
+  reg2,
+  regwe,
+  count2,
+  dec24,
+  digit4,
 ];
 
 export const LIBRARY: BlueprintLibrary = new Map(BLUEPRINTS.map((b) => [b.id, b]));

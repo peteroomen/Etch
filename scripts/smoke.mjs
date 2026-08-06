@@ -210,21 +210,25 @@ await page.click('.controls .chip:has(.chip-label:text-is("STEP"))');
 const i2 = await inputsAt();
 log.push(`      step inputs ${JSON.stringify(i1)} -> ${JSON.stringify(i2)}`);
 
-// ------------------------------------------------------------------ 2. cell size on the widest level
+// ------------------------------------------------------------------ 2. cell size on the biggest levels
+// Both axes, because chapter 5 grew boards downward rather than sideways: the
+// display is seven cells tall, and a level that only fits sideways is no use.
 await page.click('.back[aria-label="back"]');
 await page.waitForSelector('.menu');
-const widest = await page.evaluate(() => {
+const biggest = await page.evaluate(() => {
   const ls = window.etch.LEVELS;
-  let best = null;
-  for (const l of ls) if (!best || l.grid.w > best.w) best = { id: l.id, w: l.grid.w, h: l.grid.h };
-  return best;
+  const pick = (key) =>
+    ls.reduce((best, l) => (!best || l.grid[key] > best[key] ? { id: l.id, ...l.grid } : best), null);
+  return { widest: pick('w'), tallest: pick('h') };
 });
-log.push(`      widest level ${JSON.stringify(widest)}`);
-const fitted = await page.evaluate(
-  ([w, h]) => window.etch.fitViewport(w, h, 390, 500).cell,
-  [widest.w, widest.h],
-);
-ok('widest level still gets a thumb-sized cell', fitted >= 28, `cell=${fitted}`);
+for (const [which, lv] of Object.entries(biggest)) {
+  log.push(`      ${which} level ${JSON.stringify(lv)}`);
+  const fitted = await page.evaluate(
+    ([w, h]) => window.etch.fitViewport(w, h, 390, 500).cell,
+    [lv.w, lv.h],
+  );
+  ok(`${which} level still gets a thumb-sized cell`, fitted >= 28, `${lv.id} cell=${fitted}`);
+}
 
 // ------------------------------------------------------------------ 6. briefs
 const leaks = await page.evaluate(() => {

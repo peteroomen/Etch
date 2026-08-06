@@ -48,9 +48,20 @@ a clock period, depth becomes pass/fail. Chapter 4 introduces the clock anyway,
 so this is nearly free — it needs the constraint stated in the level and shown
 on the scope.
 
-## Chapter 5 — display
+## ~~Chapter 5 — display~~ — built
 
-`Kind.Seg7` and `Kind.Nixie` are in the kind table with full pin geometry and
-have never been placed. Registers, then a decoder driving a seven-segment
-display, is the natural chapter after memory, and it is the first time the
-board shows a *number* rather than a light.
+Shipped: seven levels from a 2-bit register to a counter driving a seven-segment
+display. `Kind.Seg7` is now a real output device — its segments ARE the level's
+outputs — and the board finally shows a number rather than a light. Full write-up
+in `work/chapter5.md`.
+
+## Chapter 6 — decimal, and the nixie
+
+`Kind.Nixie` is still in the kind table and still unplaced. Its ten one-hot
+cathodes are a 74141's worth, which wants a counter that counts to nine and a
+4-to-10 decoder to drive it — and a decade counter needs a reset term, which is
+the first time a circuit here has to detect its own state and act on it. That is
+a chapter, not a level.
+
+Two digits after that gives carry between decades, which is the last thing
+before arithmetic on displayed numbers.

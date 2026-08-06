@@ -13,7 +13,7 @@
  *     whether its three metrics mean anything there
  */
 
-import { Level, Score, parFor } from '../game/level';
+import { Level, Score, outputNames, parFor } from '../game/level';
 import { LIBRARY } from '../game/blueprints';
 import { PartKind, Solution, synthesise } from './synth';
 
@@ -78,7 +78,7 @@ export interface LevelTargets {
  */
 export function levelTargets(level: Level): LevelTargets {
   const inputs = level.inputs.map((p) => p.name);
-  const outputs = level.outputs.map((p) => p.name);
+  const outputs = outputNames(level);
   const k = inputs.length;
   const rows = 1 << k;
   const t = level.timeline;

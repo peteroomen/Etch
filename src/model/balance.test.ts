@@ -33,19 +33,38 @@ describe('what the model can and cannot see', () => {
    */
   it('hands exactly the sequential levels over to the other search', () => {
     const skipped = LEVELS.filter((l) => levelTargets(l).targets === null).map((l) => l.id);
-    expect(skipped).toEqual(['hold', 'set-reset', 'enable', 'gated', 'edge', 'divide']);
+    expect(skipped).toEqual([
+      'hold',
+      'set-reset',
+      'enable',
+      'gated',
+      'edge',
+      'divide',
+      'two-of-them',
+      'only-when-told',
+      'count-to-three',
+      'every-digit',
+      'show-the-count',
+    ]);
   });
 
-  it('and every one of those is a chapter about memory', () => {
+  /**
+   * Every level handed over either holds state or takes more input than a
+   * truth table can express. Chapter 4 is all of the first kind; chapter 5
+   * adds both — registers and counters hold state, and the segment matrix has
+   * four inputs whose combinations the machine feeding it never produces.
+   */
+  it('and every one of those has a reason to be sequential', () => {
     const skipped = LEVELS.filter((l) => levelTargets(l).targets === null);
-    for (const l of skipped) expect(l.chapter).toBe(4);
+    for (const l of skipped) expect(l.chapter).toBeGreaterThanOrEqual(4);
   });
 
   it('says plainly where the part budget ran out rather than claiming impossibility', () => {
     const beyond = searchable.map(analyseLevel).filter((a) => a.beyondBudget).map((a) => a.id);
-    // The full adder needs more components than the search can enumerate. That
-    // is a limit of the model, and it must never be read as "unsolvable".
-    expect(beyond).toEqual(['full-adder']);
+    // Both need more components than the search can enumerate — the full adder
+    // at twelve, the decoder at twelve across four outputs. That is a limit of
+    // the model, and it must never be read as "unsolvable".
+    expect(beyond).toEqual(['full-adder', 'one-of-four']);
   });
 
   it('reaches its verdicts by exhaustion, not by running out of nodes', () => {
