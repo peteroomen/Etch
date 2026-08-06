@@ -68,6 +68,17 @@ export interface World {
    * to keep it every toggle was silently lost on the next edit.
    */
   switches: Map<string, number>;
+  /**
+   * The last two net-value snapshots, for detecting a period-2 oscillation.
+   *
+   * A symmetric feedback loop — a cross-coupled pair from the all-zero
+   * power-on state — has no simultaneous fixed point, so it flips forever.
+   * Catching that costs two snapshots and buys memory that actually works.
+   */
+  hist1: Uint8Array;
+  hist2: Uint8Array;
+  /** how many of the snapshots are meaningful yet */
+  histDepth: number;
 }
 
 const EMPTY_LIBRARY: BlueprintLibrary = new Map();
@@ -91,6 +102,9 @@ export function createWorld(w: number, h: number, library: BlueprintLibrary = EM
     pinNames: new Map(),
     bridged: new Map(),
     switches: new Map(),
+    hist1: new Uint8Array(0),
+    hist2: new Uint8Array(0),
+    histDepth: 0,
   };
   rebuild(world);
   return world;
@@ -489,6 +503,9 @@ export function rebuild(world: World): void {
   world.comps = comps;
   world.bridged = bridged;
   world.dirty = false;
+  world.hist1 = new Uint8Array(nets.count);
+  world.hist2 = new Uint8Array(nets.count);
+  world.histDepth = 0;
   applyInputs(world);
   commit(world);
 }
@@ -539,13 +556,58 @@ function commit(world: World): void {
   }
 }
 
-/** One simulation tick: read every input, then commit every output at once. */
+/**
+ * One ORDERED pass: each component updates and its net settles before the next
+ * component reads it.
+ *
+ * Used only to break a tie that simultaneous update cannot break for itself.
+ * Applying it generally would be wrong — a chain lying along the scan order
+ * would propagate end to end in a single tick, so ticks would measure layout
+ * instead of logic depth.
+ */
+function orderedPass(world: World): void {
+  const { nets, comps } = world;
+  for (const c of comps) {
+    c.next = evaluate(c, nets, world.ticks, world.clockPeriod);
+    c.out = c.next;
+    if (c.outNet < 0) continue;
+    let acc = 0;
+    for (const d of nets.drivers[c.outNet]) acc |= driveBit(comps[d].out);
+    nets.acc[c.outNet] = acc;
+    nets.value[c.outNet] = resolve(acc, nets.pull[c.outNet] as V);
+  }
+}
+
+function sameValues(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+/**
+ * One simulation tick: read every input, then commit every output at once.
+ *
+ * Simultaneous by default, which is what makes a tick count mean propagation
+ * depth rather than placement order. The exception is a state caught repeating
+ * with PERIOD 2 — the signature of a symmetric feedback loop, and of nothing
+ * else. Such a circuit has no simultaneous answer at all, so board order
+ * decides it, exactly as mismatched gate delays decide it in silicon. Without
+ * this a cross-coupled pair rings forever and no memory can be built.
+ */
 export function tick(world: World): void {
   if (world.dirty) rebuild(world);
   const { nets, comps } = world;
   for (const c of comps) c.next = evaluate(c, nets, world.ticks, world.clockPeriod);
   world.ticks++;
   commit(world);
+
+  if (world.histDepth >= 2 && sameValues(nets.value, world.hist2)) orderedPass(world);
+  const spare = world.hist2;
+  world.hist2 = world.hist1;
+  world.hist1 = spare;
+  if (world.hist1.length !== nets.value.length) world.hist1 = new Uint8Array(nets.value.length);
+  world.hist1.set(nets.value);
+  if (world.histDepth < 2) world.histDepth++;
 }
 
 export interface SettleResult {
@@ -587,6 +649,7 @@ export function settle(world: World, cap = 256): SettleResult {
 /** Return every component and net to power-on state without touching the board. */
 export function reset(world: World): void {
   world.ticks = 0;
+  world.histDepth = 0;
   for (const c of world.comps) {
     c.next = Z;
     c.out = Z;

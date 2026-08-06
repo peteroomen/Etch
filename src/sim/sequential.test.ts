@@ -74,15 +74,50 @@ describe('the SR latch — feedback, and the first memory', () => {
     expect(both.settled).toBe(true);
   });
 
-  it('oscillates when both inputs are released at once, and says so', () => {
-    const w = srLatch();
-    apply(w, true, true);
-    setInput(w, 'S', false);
-    setInput(w, 'R', false);
-    const res = settle(w, 64);
-    // no stable state exists from a symmetric release — the sim reports that
-    // rather than inventing an answer
-    expect(res.settled).toBe(false);
+  it('resolves a symmetric release rather than ringing forever', () => {
+    // Releasing S and R together leaves the pair perfectly balanced: there is
+    // no SIMULTANEOUS answer, but there are two perfectly good stable states.
+    // Real silicon picks one by whichever gate is a shade faster; the tick rule
+    // picks one by board order. What matters is that it picks, and that it
+    // picks the same one every time.
+    const first = (() => {
+      const w = srLatch();
+      apply(w, true, true);
+      setInput(w, 'S', false);
+      setInput(w, 'R', false);
+      const res = settle(w, 64);
+      expect(res.settled).toBe(true);
+      return `${readOutput(w, 'q') ? 1 : 0}${readOutput(w, 'qbar') ? 1 : 0}`;
+    })();
+
+    const second = (() => {
+      const w = srLatch();
+      apply(w, true, true);
+      setInput(w, 'S', false);
+      setInput(w, 'R', false);
+      settle(w, 64);
+      return `${readOutput(w, 'q') ? 1 : 0}${readOutput(w, 'qbar') ? 1 : 0}`;
+    })();
+
+    expect(first).toBe(second);
+    // and it lands on a real latch state, not the illegal both-high one
+    expect(['10', '01']).toContain(first);
+  });
+
+  it('still reports a circuit that has no stable state at all', () => {
+    // Three inverters in a ring is not a tie, it is an oscillator: no ordering
+    // of updates makes it stand still, and the sim must keep saying so.
+    const w = board(12, 5);
+    inv(w, 1, 1); // reads net C, drives net A
+    run(w, 2, 1, 4, 1); // net A
+    inv(w, 5, 1); // A -> B
+    run(w, 6, 1, 8, 1); // net B
+    inv(w, 9, 1); // B -> C
+    path(w, [10, 1], [10, 3], [0, 3], [0, 1]); // net C, back round to the first
+    linkAllPins(w);
+    rebuild(w);
+    reset(w);
+    expect(settle(w, 64).settled).toBe(false);
   });
 
   it('is deterministic: the same sequence twice gives the same trace', () => {

@@ -140,7 +140,7 @@ describe('memory, which the combinational search cannot express at all', () => {
 });
 
 describe('oscillation is reported, not papered over', () => {
-  it('calls a two-inverter ring unsettled from a cold start', () => {
+  it('calls a two-inverter ring unsettled under the old simultaneous rule', () => {
     // n0 -> NOT -> n1 -> NOT -> n0, with nothing to break the tie
     const sim = simulate(
       {
@@ -154,8 +154,32 @@ describe('oscillation is reported, not papered over', () => {
         outputs: [],
       },
       { k: 1, inputs: [[false]], outputs: [[null]] },
+      undefined,
+      'simultaneous',
     );
     expect(sim.settled).toBe(false);
+  });
+
+  it('resolves EVEN rings and still reports ODD ones', () => {
+    // An even ring is a bistable: no simultaneous answer, but real stable
+    // states exist, so the tie-break finds one. An odd ring has no stable state
+    // under any ordering — it is an oscillator, and must keep saying so.
+    const ring = (n: number): SeqCircuit => ({
+      k: 1,
+      nets: n,
+      srcNet: [-1],
+      parts: Array.from({ length: n }, (_, i) => ({
+        kind: 'not' as const,
+        ins: [(i + n - 1) % n],
+        out: i,
+      })),
+      outputs: [0],
+    });
+    const cold: SeqSpec = { k: 1, inputs: [[false], [false]], outputs: [[null, null]] };
+    expect(simulate(ring(2), cold).settled).toBe(true);
+    expect(simulate(ring(4), cold).settled).toBe(true);
+    expect(simulate(ring(3), cold).settled).toBe(false);
+    expect(simulate(ring(5), cold).settled).toBe(false);
   });
 
   it('a single BUF reading itself settles, because it is not a ring', () => {
@@ -254,7 +278,7 @@ describe('the model and the game agree, tick for tick', () => {
     expect(worst).toBe(model.worst);
   });
 
-  it('agrees that a symmetric release oscillates, on the board and in the model', () => {
+  it('agrees that a symmetric release RESOLVES, on the board and in the model', () => {
     const both: SeqSpec = {
       k: 2,
       inputs: [
@@ -276,7 +300,13 @@ describe('the model and the game agree, tick for tick', () => {
       },
       both,
     );
-    expect(model.settled).toBe(false);
+    // Both now pick a state instead of ringing. They do NOT have to pick the
+    // same side: the tie is broken by update order, and the model's order is
+    // its part list while the game's is board scan order. That is a real limit
+    // worth stating — the model can prove a latch HAS a power-on state, never
+    // which one — and it is why no level may depend on the value a latch wakes
+    // up holding. Every sequential timeline asserts a set or a reset first.
+    expect(model.settled).toBe(true);
 
     const w = realBoard();
     setInput(w, 's', true);
@@ -284,7 +314,7 @@ describe('the model and the game agree, tick for tick', () => {
     settle(w, 64);
     setInput(w, 's', false);
     setInput(w, 'r', false);
-    expect(settle(w, 64).settled).toBe(false);
+    expect(settle(w, 64).settled).toBe(true);
   });
 });
 

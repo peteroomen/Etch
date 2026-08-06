@@ -98,7 +98,7 @@ export interface SeqOptions {
   nodeBudget?: number;
   /** blueprints the player owns, placeable as one move each */
   macros?: SeqMacro[];
-  /** how a tick resolves; the search must assume the same rule the game uses */
+  /** how a tick resolves; defaults to the rule the game itself uses */
   mode?: UpdateMode;
 }
 
@@ -124,7 +124,7 @@ export function simulate(
   c: SeqCircuit,
   spec: SeqSpec,
   macros?: Map<string, SeqMacro>,
-  mode: UpdateMode = 'simultaneous',
+  mode: UpdateMode = 'tiebreak',
 ): { traces: boolean[][]; worst: number; settled: boolean } {
   const cap = spec.cap ?? 64;
   // tiles expand to primitives over fresh nets, exactly as the game flattens
@@ -387,7 +387,7 @@ export function synthesiseSeq(opts: SeqOptions): SeqResult {
     maxNets = Math.min(6, maxParts + 2),
     nodeBudget = 2_000_000,
     macros = [],
-    mode = 'simultaneous',
+    mode = 'tiebreak',
   } = opts;
   const macroBy = new Map(macros.map((m) => [m.id, m]));
 
