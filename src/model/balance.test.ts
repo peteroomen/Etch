@@ -18,9 +18,27 @@ const analyse = (id: string) => analyseLevel(LEVELS_BY_ID.get(id)!);
 const searchable = LEVELS.filter((l) => levelTargets(l).targets !== null);
 
 describe('what the model can and cannot see', () => {
-  it('searches every level with three inputs or fewer', () => {
+  /**
+   * The project has two searches and one tick rule. `synth.ts` enumerates
+   * truth tables, which is fast and exhaustive and can only express a DAG;
+   * `seq.ts` simulates the real timeline, which is slower and can express a
+   * cycle. Which one applies is decided by the level, not by taste: a level
+   * whose timeline is a full input sweep is combinational, and anything else
+   * has state.
+   *
+   * This test is the boundary between them, written down. A combinational
+   * level appearing in this list would mean a level silently lost its
+   * exhaustive par; a sequential one missing from it would mean the
+   * combinational search is being asked a question it cannot answer.
+   */
+  it('hands exactly the sequential levels over to the other search', () => {
     const skipped = LEVELS.filter((l) => levelTargets(l).targets === null).map((l) => l.id);
-    expect(skipped).toEqual([]);
+    expect(skipped).toEqual(['hold', 'set-reset', 'gated', 'edge']);
+  });
+
+  it('and every one of those is a chapter about memory', () => {
+    const skipped = LEVELS.filter((l) => levelTargets(l).targets === null);
+    for (const l of skipped) expect(l.chapter).toBe(4);
   });
 
   it('says plainly where the part budget ran out rather than claiming impossibility', () => {

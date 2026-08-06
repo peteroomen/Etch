@@ -14,10 +14,32 @@
 import { N, S } from '../sim/kinds';
 import { buf, inv, path, run } from '../sim/build';
 import { placeBlueprint } from '../sim/world';
-import { Level, truthTimeline } from './level';
+import { Level, stepTimeline, truthTimeline } from './level';
 
 const WIRE = ['wire'];
 const WIRE_X = ['wire', 'cross'];
+
+/**
+ * A hand-written timeline, with rows as digits.
+ *
+ * `stepTimeline` wants booleans; a wall of `true, false, false` is unreadable
+ * and a wrong bit in it is invisible. Digits line up in columns, so a wrong one
+ * looks wrong.
+ */
+function steps(
+  ins: string[],
+  outs: string[],
+  rows: { in: number[]; out: (number | null)[] }[],
+) {
+  return stepTimeline(
+    ins,
+    outs,
+    rows.map((r) => ({
+      in: r.in.map(Boolean),
+      out: r.out.map((v) => (v === null ? null : Boolean(v))),
+    })),
+  );
+}
 
 // ------------------------------------------------------------------ chapter 1
 
@@ -392,6 +414,223 @@ const fullAdder: Level = {
   },
 };
 
+// ------------------------------------------------------------------ chapter 4
+
+/**
+ * Chapter 4 is memory, and it has one rule the earlier chapters did not need.
+ *
+ * A latch that is holding has no simultaneous answer — both sides of the pair
+ * would flip together forever — so the tick rule breaks the tie by board order.
+ * That means a latch always wakes up in a REAL state, but never a predictable
+ * one. No timeline here asserts an output value until the circuit has been set
+ * or reset at least once, because a level whose answer moved when you slid a
+ * gate sideways would be a broken level.
+ */
+
+const hold: Level = {
+  id: 'hold',
+  chapter: 4,
+  title: 'Hold',
+  teaches: 'A loop remembers. That is all memory is.',
+  brief: [
+    'Q must go HIGH the first time A does — and stay HIGH after A lets go.',
+    'Everything you have built so far forgets its inputs the moment they change. Nothing can hold a value, because every component only ever answers the question in front of it.',
+    'Unless you give one its own answer to read.',
+    'Mind which component you loop. A loop through an inverter has no settled starting value at all — it wakes up whichever way the board happens to decide, and this level asks for Q to start LOW.',
+  ],
+  grid: { w: 14, h: 7 },
+  inputs: [{ name: 'a', x: 0, y: 3 }],
+  outputs: [{ name: 'q', x: 13, y: 1 }],
+  palette: [...WIRE, 'not', 'buf'],
+  timeline: steps(
+    ['a'],
+    ['q'],
+    [
+      { in: [0], out: [0] },
+      { in: [1], out: [1] },
+      { in: [0], out: [1] }, // let go: it must not forget
+      { in: [0], out: [1] },
+      { in: [1], out: [1] },
+      { in: [0], out: [1] },
+    ],
+  ),
+  /**
+   * A buffer reading the very net it drives. Once the net is high the buffer
+   * keeps it high; until then nothing drives it and the pull-down holds it low,
+   * which is why this starts LOW every time. An inverter in the same loop would
+   * be a two-gate ring with no settled state at all.
+   */
+  reference: (w) => {
+    run(w, 1, 3, 6, 3); // the node that holds
+    path(w, [5, 3], [5, 1], [12, 1]); // out to Q
+    buf(w, 7, 3); // reads the node
+    path(w, [8, 3], [8, 5], [2, 5], [2, 3]); // and drives it straight back
+  },
+};
+
+const setReset: Level = {
+  id: 'set-reset',
+  chapter: 4,
+  title: 'Set and reset',
+  teaches: 'Two nodes, each holding the other down.',
+  brief: [
+    'S drives Q high. R drives it low. With both low, Q keeps whatever it had.',
+    'The last one could only ever remember a one. This has to be able to forget again, and nothing in this world drives a wire low — a wire only goes low when everything lets go of it.',
+    'So make something let go. Q-BAR is the opposite of Q, and it is not decoration: it is how the reset gets in.',
+  ],
+  grid: { w: 14, h: 9 },
+  inputs: [
+    { name: 's', x: 0, y: 1 },
+    { name: 'r', x: 0, y: 7 },
+  ],
+  outputs: [
+    { name: 'q', x: 13, y: 1 },
+    { name: 'qbar', x: 13, y: 7 },
+  ],
+  palette: [...WIRE_X, 'not'],
+  unlocks: 'srlatch',
+  timeline: steps(
+    ['s', 'r'],
+    ['q', 'qbar'],
+    [
+      { in: [0, 1], out: [0, 1] }, // reset first: the latch starts defined
+      { in: [0, 0], out: [0, 1] },
+      { in: [1, 0], out: [1, 0] },
+      { in: [0, 0], out: [1, 0] }, // holds
+      { in: [0, 1], out: [0, 1] },
+      { in: [0, 0], out: [0, 1] },
+      { in: [1, 0], out: [1, 0] },
+      { in: [0, 0], out: [1, 0] },
+    ],
+  ),
+  reference: (w) => {
+    run(w, 1, 1, 12, 1); // Q node: S merged with the lower inverter's output
+    run(w, 1, 7, 12, 7); // Q-BAR node: R merged with the upper inverter's
+    path(w, [10, 7], [10, 5]);
+    inv(w, 10, 4, N); // reads q-bar, drives q
+    path(w, [10, 3], [10, 1]);
+    path(w, [3, 1], [3, 3]);
+    inv(w, 3, 4, S); // reads q, drives q-bar
+    path(w, [3, 5], [3, 7]);
+  },
+};
+
+const gated: Level = {
+  id: 'gated',
+  chapter: 4,
+  title: 'Gated',
+  teaches: 'Memory with a door on it.',
+  brief: [
+    'While EN is HIGH, Q follows D. When EN drops, Q keeps whatever it had, whatever D does afterwards.',
+    'You have a latch. What it lacks is a way to be told when to listen.',
+    'The obvious route gates the set and the reset separately. It works, and it is expensive. There is a cheaper one that needs no reset term at all — think about what has to be true of Q-BAR while the door is open.',
+  ],
+  grid: { w: 20, h: 11 },
+  inputs: [
+    { name: 'en', x: 0, y: 1 },
+    { name: 'd', x: 0, y: 3 },
+  ],
+  outputs: [{ name: 'q', x: 19, y: 3 }],
+  palette: [...WIRE_X, 'not', 'buf', 'or', 'srlatch'],
+  unlocks: 'dlatch',
+  timeline: steps(
+    ['d', 'en'],
+    ['q'],
+    [
+      { in: [0, 1], out: [0] }, // open with d low, so the state is defined
+      { in: [1, 0], out: [0] }, // shut, d rises: must hold low
+      { in: [1, 1], out: [1] }, // open: follows
+      { in: [1, 0], out: [1] }, // shut: holds high
+      { in: [0, 0], out: [1] }, // d falls behind the door: still holds
+      { in: [0, 1], out: [0] }, // open: follows down
+      { in: [1, 0], out: [0] }, // rises behind the door: holds low
+      { in: [1, 1], out: [1] }, // open: follows up
+    ],
+  ),
+  /**
+   *   n2 = NOT(d) | NOT(en)     the set term, active low
+   *   Q  = NOT(n2) | NOT(qbar)
+   *   qbar = NOT(Q) | BUF(en)   forced high while the door is open
+   *
+   * Rows are ordered so nothing crosses: d only feeds one inverter, so its
+   * spine is short and the risers pass it by.
+   */
+  reference: (w) => {
+    run(w, 1, 1, 16, 1); // en, long: an inverter and the buffer both read it
+    run(w, 1, 3, 5, 3); // d, short: only one inverter reads it
+
+    inv(w, 5, 4, S); // NOT(d) -> n2
+    path(w, [8, 1], [8, 2]);
+    inv(w, 8, 3, S); // NOT(en) -> n2, threading past the short d spine
+    path(w, [8, 4], [8, 5]);
+    run(w, 4, 5, 11, 5); // n2
+
+    inv(w, 11, 6, S); // NOT(n2) -> Q
+    run(w, 2, 7, 15, 7); // Q
+    inv(w, 15, 8, N); // NOT(qbar) -> Q
+    inv(w, 2, 8, S); // NOT(Q) -> qbar
+    run(w, 2, 9, 16, 9); // qbar
+
+    path(w, [16, 1], [16, 6]); // en down the right, past both short spines
+    buf(w, 16, 7, S); // BUF(en) -> qbar
+    path(w, [16, 8], [16, 9]);
+
+    path(w, [13, 7], [13, 3], [18, 3]); // Q out, over the top of everything
+  },
+};
+
+const edge: Level = {
+  id: 'edge',
+  chapter: 4,
+  title: 'Edge',
+  teaches: 'Two doors that are never open at once.',
+  brief: [
+    'Q must take whatever D is at the moment the clock RISES, and ignore D completely until the next rise.',
+    'A gated latch is transparent: while its door is open the output chases the input. A circuit that feeds its own output back through an open door races itself around the loop as fast as the wire allows.',
+    'You have two doors. Nothing says they have to be open at the same time.',
+  ],
+  grid: { w: 20, h: 13 },
+  inputs: [
+    { name: 'd', x: 0, y: 1 },
+    { name: 'clk', x: 0, y: 11 },
+  ],
+  outputs: [{ name: 'q', x: 19, y: 6 }],
+  palette: [...WIRE_X, 'not', 'buf', 'dlatch'],
+  unlocks: 'dff',
+  timeline: steps(
+    ['d', 'clk'],
+    ['q'],
+    [
+      // a latch's power-on value is decided by board order, so nothing is
+      // claimed until the first edge has loaded a value we chose
+      { in: [0, 1], out: [null] },
+      { in: [0, 0], out: [0] },
+      { in: [1, 1], out: [1] }, // rise samples d=1
+      { in: [0, 1], out: [1] }, // clock STILL high, d falls: transparent would follow
+      { in: [0, 0], out: [1] },
+      { in: [0, 1], out: [0] }, // rise samples d=0
+      { in: [1, 1], out: [0] }, // still high, d rises: must hold
+      { in: [1, 0], out: [0] },
+      { in: [1, 1], out: [1] }, // rise samples d=1
+    ],
+  ),
+  reference: (w) => {
+    run(w, 1, 1, 6, 1); // d into the master's door
+    run(w, 1, 11, 15, 11); // the clock
+
+    path(w, [2, 11], [2, 3]); // clock up the left, clear of both tiles
+    inv(w, 3, 3); // NOT(clk): the master is open while the clock is LOW
+    run(w, 4, 3, 6, 3); // and into the master's door
+    placeBlueprint(w, 'dlatch', 7, 1);
+
+    path(w, [9, 2], [11, 2], [11, 5]); // master's q into the slave's d
+    path(w, [15, 11], [15, 9], [11, 9], [11, 7]); // the clock into the slave's door
+    placeBlueprint(w, 'dlatch', 12, 5);
+
+    run(w, 14, 6, 18, 6);
+  },
+};
+
 export const LEVELS: Level[] = [
   continuity,
   invert,
@@ -405,6 +644,10 @@ export const LEVELS: Level[] = [
   oneOrOther,
   halfAdder,
   fullAdder,
+  hold,
+  setReset,
+  gated,
+  edge,
 ];
 
 export const LEVELS_BY_ID = new Map(LEVELS.map((l) => [l.id, l]));

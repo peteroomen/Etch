@@ -34,6 +34,10 @@ that is a fact about XOR in this substrate.
 | 10 | One or other | 6c / 2t | 6p / 2t | 8p / 3t | 2 | 0 | 1 |
 | 11 | Half adder | 9c / 2t | 7p / 3t | 9p / 3t | 2 | 2 | 2 |
 | 12 | Full adder | 18c / 4t | none ≤5 | none ≤5 | — | — | 0 |
+| 13 | Hold | 1c / 0t | *timeline has 6 steps, not 2* | — | — | — | — |
+| 14 | Set and reset | 2c / 1t | *timeline has 8 steps, not 4* | — | — | — | — |
+| 15 | Gated | 6c / 2t | *timeline has 8 steps, not 4* | — | — | — | — |
+| 16 | Edge | 13c / 5t | *timeline has 9 steps, not 4* | — | — | — | — |
 
 **par** is what the level's reference solution scores — the number shown to the
 player. **optimum** is the cheapest circuit that exists. **headroom** is the gap

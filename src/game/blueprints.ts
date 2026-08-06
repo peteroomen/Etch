@@ -190,6 +190,90 @@ const adder4: Blueprint = {
   ],
 };
 
+/**
+ * SR latch — two inverters, each holding the other down.
+ *
+ * The S pin and the Q pin are the SAME internal net, and so are R and q-bar.
+ * That is not a shortcut, it is the gate: joining is destructive, so S is
+ * merged into the feedback and Q is read off the S node exactly as an
+ * open-collector latch behaves. It is why this costs two inverters here rather
+ * than the textbook four.
+ *
+ * A symmetric release — S and R dropped together — has no simultaneous answer;
+ * the tick rule breaks that tie by board order, so the latch always lands in a
+ * real state. Which state is not something a level may depend on.
+ */
+const srlatch: Blueprint = {
+  id: 'srlatch',
+  label: 'SR',
+  name: 'SR latch',
+  w: 2,
+  h: 3,
+  nets: 2,
+  pins: [
+    { name: 's', dx: 0, dy: 0, dir: W, role: 'in', net: 0 },
+    { name: 'r', dx: 0, dy: 2, dir: W, role: 'in', net: 1 },
+    { name: 'q', dx: 1, dy: 0, dir: E, role: 'out', net: 0 },
+    { name: 'qbar', dx: 1, dy: 2, dir: E, role: 'out', net: 1 },
+  ],
+  parts: [inv(1, 0), inv(0, 1)],
+};
+
+/**
+ * D latch — transparent while EN is high, holds when it drops.
+ *
+ * Not the textbook build. The textbook needs two AND terms, `d ∧ en` to set and
+ * `¬d ∧ en` to reset, which costs about nine inverters here once the copies of
+ * d are paid for. This has no reset term at all: while EN is high the BUF holds
+ * q-bar up, so NOT(q-bar) lets go and Q follows the set term alone; when EN
+ * falls the BUF lets go and the cross-coupled pair keeps what it had.
+ *
+ * Six components, two ticks — found by the superoptimiser, not by hand.
+ */
+const dlatch: Blueprint = {
+  id: 'dlatch',
+  label: 'DL',
+  name: 'D latch',
+  w: 2,
+  h: 3,
+  nets: 5,
+  pins: [
+    { name: 'd', dx: 0, dy: 0, dir: W, role: 'in', net: 0 },
+    { name: 'en', dx: 0, dy: 2, dir: W, role: 'in', net: 1 },
+    { name: 'q', dx: 1, dy: 1, dir: E, role: 'out', net: 3 },
+  ],
+  parts: [inv(0, 2), inv(1, 2), inv(2, 3), inv(4, 3), inv(3, 4), buf(1, 4)],
+};
+
+/**
+ * Edge-triggered D flip-flop — two latches on opposite phases of the clock.
+ *
+ * The master is transparent while the clock is LOW and the slave while it is
+ * HIGH, so the two are never open at once and the output can only move on a
+ * rising edge. That is the whole reason a clocked machine works: one
+ * transparent latch in a feedback loop races itself; two out of phase do not.
+ *
+ * Thirteen components, five ticks.
+ */
+const dff: Blueprint = {
+  id: 'dff',
+  label: 'DFF',
+  name: 'D flip-flop',
+  w: 2,
+  h: 3,
+  nets: 5,
+  pins: [
+    { name: 'd', dx: 0, dy: 0, dir: W, role: 'in', net: 0 },
+    { name: 'clk', dx: 0, dy: 2, dir: W, role: 'in', net: 1 },
+    { name: 'q', dx: 1, dy: 1, dir: E, role: 'out', net: 4 },
+  ],
+  parts: [inv(1, 2)], // the clock, inverted, for the master
+  subs: [
+    { id: 'dlatch', netMap: [0, 2, 3] }, // master: d, open while the clock is low
+    { id: 'dlatch', netMap: [3, 1, 4] }, // slave: master's q, open while it is high
+  ],
+};
+
 export const BLUEPRINTS: Blueprint[] = [
   nor2,
   nand2,
@@ -198,6 +282,9 @@ export const BLUEPRINTS: Blueprint[] = [
   halfadder,
   fulladder,
   adder4,
+  srlatch,
+  dlatch,
+  dff,
 ];
 
 export const LIBRARY: BlueprintLibrary = new Map(BLUEPRINTS.map((b) => [b.id, b]));
