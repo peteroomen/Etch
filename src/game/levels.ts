@@ -67,7 +67,8 @@ const invert: Level = {
   teaches: 'Components cost a tick. Wire does not.',
   brief: [
     'OUT must be the opposite of IN.',
-    'The inverter drives its output HIGH while its input is LOW. When the input goes HIGH it lets go, and a wire nothing is holding falls LOW on its own.',
+    'The inverter drives its output HIGH while its input is LOW.',
+    'When the input goes HIGH it lets go. A wire nothing is holding falls LOW on its own.',
   ],
   grid: { w: 12, h: 7 },
   inputs: [{ name: 'a', x: 0, y: 3 }],
@@ -430,7 +431,7 @@ const hold: Level = {
   brief: [
     'Q goes HIGH the first time A does, and stays HIGH after A lets go.',
     'Everything you have built so far forgets. So give a component its own answer to read.',
-    'Careful which one you loop. Inverters in a ring have no settled starting value, and Q has to start LOW here.',
+    'Loop the wrong component and Q wakes up HIGH.',
   ],
   grid: { w: 14, h: 7 },
   inputs: [{ name: 'a', x: 0, y: 3 }],
@@ -517,7 +518,7 @@ const gated: Level = {
   brief: [
     'EN is a door. While it is open, Q follows D. When it shuts, Q holds what it had.',
     'You have a latch. It has no way of knowing when to listen.',
-    'The obvious build gates S and R separately, and it costs. There is a cheaper one: try holding /Q HIGH for as long as the door is open.',
+    'Try holding /Q HIGH for as long as the door is open.',
   ],
   grid: { w: 20, h: 11 },
   inputs: [
