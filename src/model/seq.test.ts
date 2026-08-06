@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SeqSpec, describeSeq, hasFeedback, simulate, synthesiseSeq } from './seq';
+import { SeqCircuit, SeqSpec, describeSeq, hasFeedback, simulate, synthesiseSeq } from './seq';
 import { synthesise } from './synth';
 import { board, inv, path, run, sink, src } from '../sim/build';
 import { N, S } from '../sim/kinds';
@@ -299,5 +299,70 @@ describe('the witness reads as a netlist', () => {
     expect(text).toContain('a');
     expect(text).toContain('NOT(');
     expect(text).toContain('q=');
+  });
+});
+
+/**
+ * The update rule, and why it is `tiebreak`.
+ *
+ * Chapter 4 was blocked because a cross-coupled pair under simultaneous update
+ * cannot break its own tie, and power-on is all-zero — perfectly symmetric.
+ * Full ordered update fixes that and destroys the tick metric with it. These
+ * tests pin both halves of the trade so the choice cannot be quietly undone.
+ */
+describe('the update rule', () => {
+  const ring: SeqCircuit = {
+    k: 1,
+    nets: 2,
+    srcNet: [-1],
+    parts: [
+      { kind: 'not', ins: [1], out: 0 },
+      { kind: 'not', ins: [0], out: 1 },
+    ],
+    outputs: [0],
+  };
+  const cold: SeqSpec = { k: 1, inputs: [[false]], outputs: [[null]] };
+
+  /** Four inverters in a row, laid out along the evaluation order. */
+  const chain: SeqCircuit = {
+    k: 1,
+    nets: 5,
+    srcNet: [0],
+    parts: [
+      { kind: 'not', ins: [0], out: 1 },
+      { kind: 'not', ins: [1], out: 2 },
+      { kind: 'not', ins: [2], out: 3 },
+      { kind: 'not', ins: [3], out: 4 },
+    ],
+    outputs: [4],
+  };
+  /** The same circuit, laid out against it. */
+  const reversed: SeqCircuit = { ...chain, parts: [...chain.parts].reverse() };
+  const pulse: SeqSpec = { k: 1, inputs: [[false], [true], [false]], outputs: [[null, null, null]] };
+
+  it('simultaneous update cannot break a symmetric tie', () => {
+    expect(simulate(ring, cold, undefined, 'simultaneous').settled).toBe(false);
+  });
+
+  it('tiebreak resolves the ring', () => {
+    expect(simulate(ring, cold, undefined, 'tiebreak').settled).toBe(true);
+  });
+
+  it('tiebreak leaves logic depth exactly as it was', () => {
+    expect(simulate(chain, pulse, undefined, 'tiebreak').worst).toBe(4);
+    expect(simulate(chain, pulse, undefined, 'simultaneous').worst).toBe(4);
+  });
+
+  it('and depth stays independent of layout, which is the whole point', () => {
+    expect(simulate(reversed, pulse, undefined, 'tiebreak').worst).toBe(4);
+    expect(simulate(chain, pulse, undefined, 'tiebreak').worst).toBe(
+      simulate(reversed, pulse, undefined, 'tiebreak').worst,
+    );
+  });
+
+  it('full ordered update would have billed that chain one tick, not four', () => {
+    // the rejected option, recorded so the trade-off is not forgotten
+    expect(simulate(chain, pulse, undefined, 'ordered').worst).toBe(1);
+    expect(simulate(reversed, pulse, undefined, 'ordered').worst).toBe(4);
   });
 });

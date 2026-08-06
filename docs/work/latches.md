@@ -1,100 +1,88 @@
-# Latches do not compose. The substrate has to change.
+# Latches, and the update rule that makes them work
 
-This is a blocking finding for chapter 4 and everything above it. It is not a
-bug in a level or a blueprint — it is a property of the update model.
+Chapter 4 was blocked: latches worked alone and would not compose. The cause
+was the update rule, and the fix is a narrow change to it. This is the record
+of what was measured.
 
-## What was tested
+## Why latches would not compose
 
-1. **Blueprint flattening with a cycle** — an SR latch whose two inverters read
-   each other, and whose S pin and Q pin are the *same internal net*. This was
-   broken and is now fixed: flattening let the last pin on a shared internal net
-   overwrite the first, so a latch with an unwired q̄ silently lost its R input.
-   Fixed in `blueprint.ts`, pinned by four tests. **Latches work as tiles.**
-
-2. **A master-slave flip-flop from two D latches** — oscillates. Never settles.
-
-3. **Why** — traced to the update model, below.
-
-4. **Whether a power-on-safe D latch exists at all** — with inverters alone,
-   exhaustively, at seven parts or fewer: **no**.
-
-## The reason
-
-Four facts that are individually fine and jointly fatal:
+Four facts, individually fine and jointly fatal:
 
 - **Nothing drives LOW.** Every driver pulls high or lets go, and a weak
-  pull-down supplies the zeros. This is the substrate's founding decision and
-  everything good about the game comes from it.
-- **So power-on is all-zero** — and that is the most symmetric state there is.
-  Every inverter sees a low input, so every inverter fires at once.
+  pull-down supplies the zeros. Everything good about the game comes from this.
+- **So power-on is all-zero** — the most symmetric state there is. Every
+  inverter sees a low input and fires at once.
 - **Resettable memory needs an inverting loop.** A non-inverting self-hold
-  (`n = a | BUF(n)`) powers on cleanly at zero, but nothing can ever pull it
-  back down, because nothing drives low. Only a cross-coupled pair can be
-  reset — one side raises the other's input, which makes its inverter let go.
-- **A cross-coupled pair is symmetric, and update is simultaneous.** From the
-  all-zero state both inverters fire together, both nets go high together, both
-  let go together, forever. Real hardware breaks this tie with mismatched
-  delays. Simultaneous update preserves the symmetry exactly.
+  (`n = a | BUF(n)`) powers on cleanly but can never be pulled back down,
+  because nothing drives low. Only a cross-coupled pair can be reset.
+- **A cross-coupled pair is symmetric, and update was simultaneous.** Both
+  sides fire together, rise together, let go together, forever. Real hardware
+  breaks the tie with mismatched delays; simultaneous update preserves it.
 
 Standalone latches passed only because their timelines happened to open with an
-input asserted, which broke the tie from outside. **A master-slave cannot do
-that**: its two enables are complements, so one latch is always disabled at
-t = 0, always in the symmetric state, always ringing.
+input asserted, breaking the tie from outside. A master-slave cannot do that —
+its two enables are complements, so one latch is always disabled at t = 0.
 
-That is why the 6-part D latch works alone and fails the moment it is used.
+## The four rules, measured
 
-## Measured
+| | simultaneous | ordered | seeded | **tiebreak** |
+|---|---|---|---|---|
+| two-inverter ring, cold | OSCILLATES | settles | settles | **settles** |
+| four-inverter chain (depth 4) | 4 ticks | **1 tick** | 4 ticks | **4 ticks** |
+| same chain, reversed layout | 4 ticks | 4 ticks | 4 ticks | **4 ticks** |
+| AND (depth 2) | 2 ticks | **1 tick** | 2 ticks | **2 ticks** |
+| XOR (depth 2) | 2 ticks | **1 tick** | 2 ticks | **2 ticks** |
+| D latch, powers on unaided | OSCILLATES | wrong | wrong | **correct, 2t** |
 
-| question | answer |
-|---|---|
-| SR latch as a tile, cycle and shared S/Q net | works — 2 components, 1 tick, after the flatten fix |
-| D latch, timeline opens with EN **high** | 6p / 2t (BUF), exhaustive |
-| D latch, timeline opens with EN **low** (must power on unaided) | **none at ≤7, inverters alone, exhaustive** |
-| Master-slave from the 6-part latch | never settles |
-| Any degenerate 1-tile answer to the flip-flop spec | none at ≤6 billed, exhaustive — the spec is honest |
+- **simultaneous** — every part reads, then every net commits. Ticks measure
+  true logic depth. Symmetric loops can never break their own tie.
+- **ordered** — parts update one at a time in board order. Fixes the ring, but
+  a chain laid out *along* the scan propagates in ONE tick and the same chain
+  laid out against it takes four. Ticks stop measuring depth and start
+  measuring layout. AND and XOR both collapse from 2 to 1. It also failed to
+  produce a working latch when re-searched under its own rules.
+- **seeded** — one ordered pass at power-on, simultaneous after. Keeps depth,
+  fixes the ring, but a latch can re-enter the symmetric state later, so the
+  master-slave still hangs.
+- **tiebreak** — simultaneous, until the state is caught repeating with
+  **period 2**. That is what a symmetric loop does and what nothing else does,
+  so one ordered pass breaks it and simultaneous update resumes.
 
-## Options
+## The decision: tiebreak
 
-**A. Ordered update within a tick.** Evaluate components in a deterministic
-order instead of all at once, so a cross-coupled pair resolves the way a
-unit-delay gate simulator resolves it. This is how most real gate-level
-simulators behave. Latches then power on to a defined state with no extra
-parts and no extra concepts.
-*Cost:* every tick par in the game is re-measured; "depth" becomes slightly
-less clean as a story, because order matters within a tick.
+It is the only rule that gets everything:
 
-**B. An explicit power-on reset phase.** The harness holds a global CLEAR
-asserted before step 0. Realistic — every real system has power-on reset — and
-cheap to implement.
-*Cost:* every memory element needs a clear path wired to it, which is parts the
-player pays for and a concept chapter 4 has to teach immediately. The search
-already caught one attempt at this where CLEAR collapsed into ENABLE and did
-nothing.
+- **Every existing tick par is untouched.** A circuit with a fixed point never
+  reaches the tie-break, so nothing in chapters 1–3 changes. Verified: NOR 1,
+  NAND 1, AND 2, XOR 2, four-chain 4 — identical to today, and identical
+  whichever way the chain is laid out.
+- **A D latch now powers on unaided and correct, in two ticks.** Under every
+  other rule that was impossible; under simultaneous it was proven impossible
+  exhaustively.
+- **It is honest about what it models.** Only circuits with no simultaneous
+  answer get decided by board order — which is precisely what mismatched gate
+  delays decide in real hardware. The game is not inventing a resolution, it is
+  admitting that a symmetric race has to be resolved by something.
 
-**C. Seed power-on asymmetrically.** Give `reset()` a deterministic non-uniform
-starting state.
-*Cost:* arbitrary and unteachable. It would work and it would be a lie.
+Full ordered update was the intuition and it is nearly right; it just pays for
+the fix with the metric the whole game scores on. Tiebreak buys the same fix
+and pays nothing.
 
-**D. Add a memory primitive.** A latch component, not built from inverters.
-*Cost:* abandons the game's thesis at exactly the point the thesis gets
-interesting.
+## Still open
 
-## Recommendation
+The master-slave built from the 6-part D latch now **settles** under tiebreak
+but computes the wrong function. That is no longer a substrate problem — it is
+a circuit problem, and a well-posed one: the latch was found by a search
+assuming simultaneous rules, so chapter 4's blueprints should be re-searched
+under tiebreak before any of them ship.
 
-**A.** It is the only option that fixes the cause rather than working around
-it, it costs the player nothing, and it makes the simulator behave like the
-thing it is modelling. B is a real technique and worth teaching *later* — a
-reset line is good design — but making it mandatory in the first memory level
-is a tax on the wrong lesson.
+## Landed alongside this
 
-Re-measuring tick pars is a `npm run balance` away, and every par in the game
-is derived rather than typed, so nothing has to be edited by hand.
-
-## Not blocked by this
-
-- The flatten fix is independent and already landed.
-- The copy corrections about the textbook XOR are independent and already
-  landed.
-- Macro/tile support in the search is independent and already landed. It costs
-  a tile at its flattened primitive count, and it proved the flip-flop spec has
-  no cheap degenerate answer — that check is what caught two broken specs.
+- **Blueprint cycles work.** `flattenBlueprint` let the last pin on a shared
+  internal net overwrite the first, so an SR latch — whose S and Q pins are
+  deliberately the same node — silently lost its R input when q̄ was unwired.
+  Fixed, with four regression tests.
+- **Tiles are moves the search can make**, billed at flattened primitive count.
+  This is what makes levels built from owned blocks costable, and it has
+  already caught two broken level specs: one where S was decorative, one where
+  CLEAR collapsed into ENABLE.

@@ -64,6 +64,31 @@ export interface SeqSpec {
   cap?: number;
 }
 
+/**
+ * How a tick resolves.
+ *
+ * `simultaneous` — every part reads, then every net commits. Ticks then measure
+ * true logic depth, which is what makes a tick par mean something. Its cost is
+ * that a symmetric feedback loop can never break its own tie.
+ *
+ * `ordered` — parts update one at a time in board order, each net settling
+ * before the next part reads it. Cross-coupled pairs resolve, like a unit-delay
+ * gate simulator. Its cost is that a chain laid out along the scan order
+ * propagates in ONE tick, so ticks stop measuring depth.
+ *
+ * `seeded` — one ordered pass at power-on to break the all-zero symmetry, then
+ * simultaneous forever after. Keeps depth honest and still starts defined.
+ *
+ * `tiebreak` — simultaneous, until the state is caught repeating with period 2.
+ * That is what a symmetric loop does and what nothing else does, so one ordered
+ * pass is applied to break it and simultaneous update resumes. Any circuit that
+ * has a fixed point never reaches the tie-break, so every existing tick par is
+ * untouched; only circuits that genuinely have no simultaneous answer are
+ * decided by board order — which is exactly what mismatched gate delays decide
+ * in real hardware.
+ */
+export type UpdateMode = 'simultaneous' | 'ordered' | 'seeded' | 'tiebreak';
+
 export interface SeqOptions {
   spec: SeqSpec;
   kinds: PartKind[];
@@ -73,6 +98,8 @@ export interface SeqOptions {
   nodeBudget?: number;
   /** blueprints the player owns, placeable as one move each */
   macros?: SeqMacro[];
+  /** how a tick resolves; the search must assume the same rule the game uses */
+  mode?: UpdateMode;
 }
 
 export interface SeqResult {
@@ -97,6 +124,7 @@ export function simulate(
   c: SeqCircuit,
   spec: SeqSpec,
   macros?: Map<string, SeqMacro>,
+  mode: UpdateMode = 'simultaneous',
 ): { traces: boolean[][]; worst: number; settled: boolean } {
   const cap = spec.cap ?? 64;
   // tiles expand to primitives over fresh nets, exactly as the game flattens
@@ -113,6 +141,40 @@ export function simulate(
   let values = new Uint8Array(n);
   const next = new Uint8Array(n);
   const partOut = new Uint8Array(allParts.length);
+
+  /** Which parts drive each net, for recomputing one net at a time. */
+  const driversOf: number[][] = Array.from({ length: n }, () => []);
+  allParts.forEach((p, i) => {
+    if (p.out >= 0) driversOf[p.out].push(i);
+  });
+
+  const evalPart = (i: number, read: Uint8Array): number => {
+    const part = allParts[i];
+    switch (part.kind) {
+      case 'not':
+        return read[part.ins[0]] ? 0 : 1;
+      case 'buf':
+        return read[part.ins[0]];
+      default:
+        return read[part.ins[0]] || read[part.ins[1]] ? 1 : 0;
+    }
+  };
+
+  /**
+   * One ordered pass: each part updates and its net settles before the next
+   * part reads it, so a cross-coupled pair resolves instead of ringing.
+   */
+  const orderedPass = (ins: boolean[]) => {
+    for (let i = 0; i < allParts.length; i++) {
+      partOut[i] = evalPart(i, values);
+      const out = allParts[i].out;
+      if (out < 0) continue;
+      let v = 0;
+      for (let s = 0; s < c.k; s++) if (c.srcNet[s] === out && ins[s]) v = 1;
+      for (const d of driversOf[out]) if (partOut[d]) v = 1;
+      values[out] = v;
+    }
+  };
 
   /** Recompute net values from the current part outputs and the live inputs. */
   const commit = (ins: boolean[]) => {
@@ -143,7 +205,50 @@ export function simulate(
   };
 
   const settle = (ins: boolean[]): { ticks: number; settled: boolean } => {
+    let twoAgo: Uint8Array | null = null;
+    let oneAgo: Uint8Array | null = null;
     for (let i = 1; i <= cap; i++) {
+      if (mode === 'tiebreak') {
+        const before = Uint8Array.from(values);
+        tick(ins);
+        values.set(next);
+        let same = true;
+        for (let j = 0; j < n; j++) {
+          if (before[j] !== values[j]) {
+            same = false;
+            break;
+          }
+        }
+        if (same) return { ticks: i - 1, settled: true };
+        // a state seen two ticks ago and not since is a period-2 ring: no
+        // simultaneous fixed point exists, so let board order decide it
+        if (twoAgo) {
+          let cycling = true;
+          for (let j = 0; j < n; j++) {
+            if (twoAgo[j] !== values[j]) {
+              cycling = false;
+              break;
+            }
+          }
+          if (cycling) orderedPass(ins);
+        }
+        twoAgo = oneAgo;
+        oneAgo = Uint8Array.from(values);
+        continue;
+      }
+      if (mode === 'ordered') {
+        const before = Uint8Array.from(values);
+        orderedPass(ins);
+        let same = true;
+        for (let j = 0; j < n; j++) {
+          if (before[j] !== values[j]) {
+            same = false;
+            break;
+          }
+        }
+        if (same) return { ticks: i - 1, settled: true };
+        continue;
+      }
       tick(ins);
       let same = true;
       for (let j = 0; j < n; j++) {
@@ -163,6 +268,9 @@ export function simulate(
   partOut.fill(0);
   commit(spec.inputs[0]);
   values.set(next);
+  // one ordered pass at power-on breaks the all-zero symmetry that a
+  // cross-coupled pair cannot break for itself
+  if (mode === 'seeded') orderedPass(spec.inputs[0]);
   const boot = settle(spec.inputs[0]);
   if (!boot.settled) return { traces: [], worst: cap, settled: false };
 
@@ -279,6 +387,7 @@ export function synthesiseSeq(opts: SeqOptions): SeqResult {
     maxNets = Math.min(6, maxParts + 2),
     nodeBudget = 2_000_000,
     macros = [],
+    mode = 'simultaneous',
   } = opts;
   const macroBy = new Map(macros.map((m) => [m.id, m]));
 
@@ -366,7 +475,7 @@ export function synthesiseSeq(opts: SeqOptions): SeqResult {
             placements: tiles.map((m) => ({ macro: m.place.macro, hosts: [...m.place.hosts] })),
             outputs: [] as number[],
           };
-          const sim = simulate(circuit, spec, macroBy);
+          const sim = simulate(circuit, spec, macroBy, mode);
           if (!sim.settled) return;
 
           const outputs: number[] = [];
