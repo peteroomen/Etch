@@ -433,10 +433,10 @@ const hold: Level = {
   title: 'Hold',
   teaches: 'A loop remembers. That is all memory is.',
   brief: [
-    'Q must go HIGH the first time A does — and stay HIGH after A lets go.',
-    'Everything you have built so far forgets its inputs the moment they change. Nothing can hold a value, because every component only ever answers the question in front of it.',
-    'Unless you give one its own answer to read.',
-    'Mind which component you loop. A loop through an inverter has no settled starting value at all — it wakes up whichever way the board happens to decide, and this level asks for Q to start LOW.',
+    'Q goes HIGH the first time A does, and stays HIGH after A lets go.',
+    'Everything you have built so far forgets. A component only ever answers the question in front of it.',
+    'So give one its own answer to read.',
+    'Careful which one you loop. Two inverters in a ring have no starting value — they wake up whichever way the board happens to decide. Q has to start LOW here.',
   ],
   grid: { w: 14, h: 7 },
   inputs: [{ name: 'a', x: 0, y: 3 }],
@@ -474,9 +474,9 @@ const setReset: Level = {
   title: 'Set and reset',
   teaches: 'Two nodes, each holding the other down.',
   brief: [
-    'S drives Q high. R drives it low. With both low, Q keeps whatever it had.',
-    'The last one could only ever remember a one. This has to be able to forget again, and nothing in this world drives a wire low — a wire only goes low when everything lets go of it.',
-    'So make something let go. Q-BAR is the opposite of Q, and it is not decoration: it is how the reset gets in.',
+    'S drives Q high. R drives it low. With both low, Q holds what it had.',
+    'Your last circuit could only ever remember a one. This one has to forget again — and nothing here drives a wire low. A wire goes low when every driver lets go of it.',
+    'So R has to make something let go. That is what Q-BAR is for: not a second output, but the other half of the circuit.',
   ],
   grid: { w: 14, h: 9 },
   inputs: [
@@ -521,9 +521,9 @@ const gated: Level = {
   title: 'Gated',
   teaches: 'Memory with a door on it.',
   brief: [
-    'While EN is HIGH, Q follows D. When EN drops, Q keeps whatever it had, whatever D does afterwards.',
-    'You have a latch. What it lacks is a way to be told when to listen.',
-    'The obvious route gates the set and the reset separately. It works, and it is expensive. There is a cheaper one that needs no reset term at all — think about what has to be true of Q-BAR while the door is open.',
+    'EN is a door. While it is open, Q follows D. When it shuts, Q holds what it had — whatever D does next.',
+    'You have a latch. It has no way of knowing when to listen.',
+    'The obvious build gates S and R separately. It works, and it costs. There is a cheaper one: try holding Q-BAR HIGH for as long as the door is open, and see what is left for Q to do.',
   ],
   grid: { w: 20, h: 11 },
   inputs: [
@@ -585,9 +585,9 @@ const edge: Level = {
   title: 'Edge',
   teaches: 'Two doors that are never open at once.',
   brief: [
-    'Q must take whatever D is at the moment the clock RISES, and ignore D completely until the next rise.',
-    'A gated latch is transparent: while its door is open the output chases the input. A circuit that feeds its own output back through an open door races itself around the loop as fast as the wire allows.',
-    'You have two doors. Nothing says they have to be open at the same time.',
+    'Q takes whatever D is at the instant the clock RISES. Between rises it ignores D completely.',
+    'Your latch is transparent: while its door is open, Q chases D. Feed a circuit its own output through an open door and it races itself round the loop.',
+    'You can place two doors. They do not have to be open at the same time.',
   ],
   grid: { w: 20, h: 13 },
   inputs: [
