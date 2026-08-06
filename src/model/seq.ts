@@ -395,6 +395,15 @@ export function synthesiseSeq(opts: SeqOptions): SeqResult {
   let states = 0;
   let truncated = false;
 
+  /**
+   * Most of a search is spent settling circuits that never settle, and the cost
+   * of finding that out is whatever cap is set. A flat 64 was absurd: a circuit
+   * of N parts cannot be deeper than N, so anything still moving well past that
+   * is ringing and will keep ringing. Twice the budget plus a margin for the
+   * tie-break leaves generous headroom and roughly halves the wall clock.
+   */
+  const searchSpec: SeqSpec = { ...spec, cap: spec.cap ?? maxParts * 2 + 8 };
+
   for (let parts = 0; parts <= maxParts && !truncated; parts++) {
     // there are only k + parts drivers, so more nets than that leaves one empty
     const netCap = Math.min(maxNets, spec.k + parts);
@@ -475,7 +484,7 @@ export function synthesiseSeq(opts: SeqOptions): SeqResult {
             placements: tiles.map((m) => ({ macro: m.place.macro, hosts: [...m.place.hosts] })),
             outputs: [] as number[],
           };
-          const sim = simulate(circuit, spec, macroBy, mode);
+          const sim = simulate(circuit, searchSpec, macroBy, mode);
           if (!sim.settled) return;
 
           const outputs: number[] = [];

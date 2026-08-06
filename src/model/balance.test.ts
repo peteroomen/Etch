@@ -33,7 +33,7 @@ describe('what the model can and cannot see', () => {
    */
   it('hands exactly the sequential levels over to the other search', () => {
     const skipped = LEVELS.filter((l) => levelTargets(l).targets === null).map((l) => l.id);
-    expect(skipped).toEqual(['hold', 'set-reset', 'gated', 'edge']);
+    expect(skipped).toEqual(['hold', 'set-reset', 'enable', 'gated', 'edge']);
   });
 
   it('and every one of those is a chapter about memory', () => {

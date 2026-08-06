@@ -38,8 +38,8 @@ function verify(l: Level) {
 }
 
 describe('chapter 4 is built and verified', () => {
-  it('has the four memory levels, in order', () => {
-    expect(ch4.map((l) => l.id)).toEqual(['hold', 'set-reset', 'gated', 'edge']);
+  it('has the memory levels, in order', () => {
+    expect(ch4.map((l) => l.id)).toEqual(['hold', 'set-reset', 'enable', 'gated', 'edge']);
   });
 
   it.each(ch4.map((l) => [l.id, l] as const))('%s: the reference solves it', (_id, l) => {
@@ -52,6 +52,7 @@ describe('chapter 4 is built and verified', () => {
     // measured, never typed: these come from running the references above
     expect(verify(level('hold')).score).toMatchObject({ components: 1, ticks: 0 });
     expect(verify(level('set-reset')).score).toMatchObject({ components: 2, ticks: 1 });
+    expect(verify(level('enable')).score).toMatchObject({ components: 5, ticks: 2 });
     expect(verify(level('gated')).score).toMatchObject({ components: 6, ticks: 2 });
     expect(verify(level('edge')).score).toMatchObject({ components: 13, ticks: 5 });
   });
@@ -92,6 +93,24 @@ describe('the timelines pin down what they claim to teach', () => {
    * Gated must need its enable. With EN held high the latch is transparent, so
    * a level that could still be satisfied would not be testing the door.
    */
+  /**
+   * Enable must need BOTH s and en. An earlier draft of this spec had a
+   * two-part answer that ignored S entirely, because no step had EN high with
+   * S low — the search found the cheat in a tenth of a second.
+   */
+  it('Enable needs both its set and its enable', () => {
+    const spec = specOf(level('enable'));
+    const ins = Object.keys(level('enable').timeline.inputs);
+    const si = ins.indexOf('s');
+    // pin S low: with the set input gone the level must become unsolvable
+    const noSet: SeqSpec = {
+      ...spec,
+      inputs: spec.inputs.map((row) => row.map((v, i) => (i === si ? false : v))),
+    };
+    const r = synthesiseSeq({ spec: noSet, kinds: ['not'], maxParts: 4 });
+    expect(r.frontier).toEqual([]);
+  });
+
   it('Gated needs its enable to actually gate', () => {
     const spec = specOf(level('gated'));
     const alwaysOpen: SeqSpec = { ...spec, inputs: spec.inputs.map(([d]) => [d, true]) };

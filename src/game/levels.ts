@@ -510,6 +510,70 @@ const setReset: Level = {
   },
 };
 
+const enable: Level = {
+  id: 'enable',
+  chapter: 4,
+  title: 'Enable',
+  teaches: 'A latch you can only set when you are allowed to.',
+  brief: [
+    'S sets Q — but only while EN is HIGH. R resets it whatever EN is doing.',
+    'Your latch takes S at its word. This one has to check something first, and you cannot afford an AND gate to do the checking.',
+    'So make the latch do it. Both S and EN have to be HIGH at the same moment to pull it over — and once it is over, it holds itself there.',
+  ],
+  grid: { w: 16, h: 9 },
+  inputs: [
+    { name: 's', x: 0, y: 1 },
+    { name: 'r', x: 0, y: 3 },
+    { name: 'en', x: 0, y: 5 },
+  ],
+  outputs: [{ name: 'q', x: 15, y: 7 }],
+  palette: [...WIRE_X, 'not'],
+  timeline: steps(
+    ['s', 'en', 'r'],
+    ['q'],
+    [
+      { in: [0, 0, 1], out: [0] }, // reset first, so the latch starts defined
+      { in: [0, 0, 0], out: [0] },
+      { in: [1, 0, 0], out: [0] }, // S alone: the door is shut
+      { in: [0, 0, 0], out: [0] },
+      { in: [0, 1, 0], out: [0] }, // EN alone: nothing to let in
+      { in: [0, 0, 0], out: [0] },
+      { in: [1, 1, 0], out: [1] }, // both, together: sets
+      { in: [0, 0, 0], out: [1] }, // and holds
+      { in: [0, 0, 1], out: [0] }, // R wins whatever the door is doing
+      { in: [0, 0, 0], out: [0] },
+      { in: [1, 1, 0], out: [1] },
+      { in: [0, 0, 0], out: [1] },
+    ],
+  ),
+  /**
+   * The AND is fused into the latch rather than stacked in front of it.
+   *
+   *   n0 = s  | NOT(n2)
+   *   n1 = en | NOT(n2)
+   *   n2 = r  | NOT(n0) | NOT(n1)
+   *   q  = NOT(n2)
+   *
+   * While n2 is high both feedback inverters are letting go, so n0 is just S
+   * and n1 is just EN — and only both together can pull n2 down. Once it is
+   * down, NOT(n2) holds them both up on its own, which is the hold.
+   */
+  reference: (w) => {
+    run(w, 1, 1, 7, 1); // n0 = s, and the feedback
+    run(w, 1, 3, 11, 3); // n2 = r, and the two set legs
+    run(w, 1, 5, 7, 5); // n1 = en, and the feedback
+
+    inv(w, 3, 2, N); // NOT(n2) -> n0
+    inv(w, 6, 2, S); // NOT(n0) -> n2
+    inv(w, 3, 4, S); // NOT(n2) -> n1
+    inv(w, 6, 4, N); // NOT(n1) -> n2
+
+    path(w, [9, 3], [9, 5]); // n2 down past the short en spine
+    inv(w, 9, 6, S); // NOT(n2) -> Q
+    run(w, 9, 7, 14, 7);
+  },
+};
+
 const gated: Level = {
   id: 'gated',
   chapter: 4,
@@ -522,8 +586,8 @@ const gated: Level = {
   ],
   grid: { w: 20, h: 11 },
   inputs: [
-    { name: 'en', x: 0, y: 1 },
-    { name: 'd', x: 0, y: 3 },
+    { name: 'd', x: 0, y: 1 },
+    { name: 'en', x: 0, y: 7 },
   ],
   outputs: [{ name: 'q', x: 19, y: 3 }],
   palette: [...WIRE_X, 'not', 'buf', 'or', 'srlatch'],
@@ -543,34 +607,33 @@ const gated: Level = {
     ],
   ),
   /**
-   *   n2 = NOT(d) | NOT(en)     the set term, active low
-   *   Q  = NOT(n2) | NOT(qbar)
-   *   qbar = NOT(Q) | BUF(en)   forced high while the door is open
+   * The cross-coupled pair at the heart of this IS the latch from two levels
+   * ago, so the reference places that tile rather than rebuilding it from
+   * inverters. It bills the same six components either way — but the tile
+   * folds all of the feedback routing into one block, and routing is most of
+   * what the area score is made of.
    *
-   * Rows are ordered so nothing crosses: d only feeds one inverter, so its
-   * spine is short and the risers pass it by.
+   *   n2 = NOT(d) | NOT(en)   the set term, active low
+   *   S  = NOT(n2)            into the latch, which holds Q
+   *   R  = BUF(en)            asserted while the door is open, so Q follows n2
+   *
+   * Both feeds meet the tile pin against pin, with no wire between them at all.
    */
   reference: (w) => {
-    run(w, 1, 1, 16, 1); // en, long: an inverter and the buffer both read it
-    run(w, 1, 3, 5, 3); // d, short: only one inverter reads it
+    run(w, 1, 1, 3, 1); // d, short: one inverter reads it
+    run(w, 1, 7, 9, 7); // en
 
-    inv(w, 5, 4, S); // NOT(d) -> n2
-    path(w, [8, 1], [8, 2]);
-    inv(w, 8, 3, S); // NOT(en) -> n2, threading past the short d spine
-    path(w, [8, 4], [8, 5]);
-    run(w, 4, 5, 11, 5); // n2
+    inv(w, 3, 2, S); // NOT(d) -> n2
+    path(w, [5, 7], [5, 5]);
+    inv(w, 5, 4, N); // NOT(en) -> n2
+    run(w, 3, 3, 9, 3); // n2
 
-    inv(w, 11, 6, S); // NOT(n2) -> Q
-    run(w, 2, 7, 15, 7); // Q
-    inv(w, 15, 8, N); // NOT(qbar) -> Q
-    inv(w, 2, 8, S); // NOT(Q) -> qbar
-    run(w, 2, 9, 16, 9); // qbar
+    inv(w, 10, 3); // NOT(n2) -> the latch's S
+    path(w, [9, 7], [9, 5]);
+    buf(w, 10, 5); // BUF(en) -> the latch's R
 
-    path(w, [16, 1], [16, 6]); // en down the right, past both short spines
-    buf(w, 16, 7, S); // BUF(en) -> qbar
-    path(w, [16, 8], [16, 9]);
-
-    path(w, [13, 7], [13, 3], [18, 3]); // Q out, over the top of everything
+    placeBlueprint(w, 'srlatch', 11, 3);
+    run(w, 13, 3, 18, 3); // Q out
   },
 };
 
@@ -641,6 +704,7 @@ export const LEVELS: Level[] = [
   fullAdder,
   hold,
   setReset,
+  enable,
   gated,
   edge,
 ];
