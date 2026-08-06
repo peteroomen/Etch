@@ -4,6 +4,10 @@ import { LIBRARY, validateBlueprint } from './blueprints';
 import { createLevelWorld, runTimeline } from './level';
 import { SeqSpec, synthesiseSeq } from '../model/seq';
 import { Level } from './level';
+import { board, bp, inv, path, run, sink, src } from '../sim/build';
+import { S } from '../sim/kinds';
+import { linkAllPins } from '../sim/draw';
+import { readOutput, rebuild, reset, setInput, settle } from '../sim/world';
 
 /**
  * Chapter 4 — memory.
@@ -39,7 +43,14 @@ function verify(l: Level) {
 
 describe('chapter 4 is built and verified', () => {
   it('has the memory levels, in order', () => {
-    expect(ch4.map((l) => l.id)).toEqual(['hold', 'set-reset', 'enable', 'gated', 'edge']);
+    expect(ch4.map((l) => l.id)).toEqual([
+      'hold',
+      'set-reset',
+      'enable',
+      'gated',
+      'edge',
+      'divide',
+    ]);
   });
 
   it.each(ch4.map((l) => [l.id, l] as const))('%s: the reference solves it', (_id, l) => {
@@ -55,6 +66,7 @@ describe('chapter 4 is built and verified', () => {
     expect(verify(level('enable')).score).toMatchObject({ components: 5, ticks: 2 });
     expect(verify(level('gated')).score).toMatchObject({ components: 6, ticks: 2 });
     expect(verify(level('edge')).score).toMatchObject({ components: 13, ticks: 5 });
+    expect(verify(level('divide')).score).toMatchObject({ components: 14, ticks: 3 });
   });
 
   it('unlocks each block the next level needs', () => {
@@ -156,6 +168,48 @@ describe('the timelines pin down what they claim to teach', () => {
   });
 });
 
+describe('the divider wakes the same way wherever it is built', () => {
+  /**
+   * A T flip-flop is never LOADED with a value — it toggles from wherever it
+   * woke up, so its whole trace is one inversion away from a different answer.
+   * That is only safe because a blueprint's insides are always emitted in the
+   * same order however the tile is placed, so the tie-break resolves them
+   * identically. If that ever stops being true, this level stops being fair,
+   * and it should fail here rather than in someone's hands.
+   */
+  it('gives an identical trace at three board offsets', () => {
+    const traces = new Set<string>();
+    for (const [dx, dy] of [
+      [0, 0],
+      [1, 2],
+      [2, 3],
+    ] as const) {
+      const w = board(24, 16, LIBRARY);
+      src(w, 'clk', dx, dy + 6);
+      run(w, dx + 1, dy + 6, dx + 7, dy + 6);
+      bp(w, 'dff', dx + 8, dy + 4);
+      run(w, dx + 10, dy + 5, dx + 15, dy + 5);
+      sink(w, 'q', dx + 16, dy + 5);
+      path(w, [dx + 12, dy + 5], [dx + 12, dy + 2], [dx + 6, dy + 2]);
+      inv(w, dx + 6, dy + 3, S);
+      run(w, dx + 6, dy + 4, dx + 7, dy + 4);
+      linkAllPins(w);
+      rebuild(w);
+      reset(w);
+
+      let out = '';
+      for (let i = 0; i < 9; i++) {
+        setInput(w, 'clk', i % 2 === 1);
+        expect(settle(w, 64).settled).toBe(true);
+        out += readOutput(w, 'q') ? '1' : '0';
+      }
+      traces.add(out);
+    }
+    expect(traces.size).toBe(1);
+    expect([...traces][0]).toBe('011001100');
+  });
+});
+
 describe('no level depends on a value it cannot control', () => {
   /**
    * A latch that is holding has no simultaneous answer, so the tick rule breaks
@@ -163,16 +217,26 @@ describe('no level depends on a value it cannot control', () => {
    * never a predictable one — so a level asserting an output before it has been
    * set or reset would pass or fail depending on where the player put a gate.
    *
-   * Hold is exempt: its reference is a BUFFER loop, which is not a ring at all.
-   * Nothing drives the node until A does, and the pull-down holds it low.
+   * Two levels are exempt, and each exemption is EARNED by a proof rather than
+   * asserted here:
+   *
+   *   Hold — its answer is a BUFFER loop, not a ring at all. Nothing drives the
+   *   node until A does and the pull-down holds it low, so it starts low every
+   *   time by construction.
+   *
+   *   Divide — a T flip-flop cannot be loaded, so its trace is one inversion
+   *   away from a different answer. The offsets test directly above is what
+   *   makes it safe: identical trace wherever the tile is placed. Delete that
+   *   test and this exemption becomes a lie.
    */
+  const EXEMPT = new Set(['hold', 'divide']);
+
   it('any level that claims a value at step 0 does so from a defined state', () => {
     for (const l of ch4) {
       const first = Object.values(l.timeline.outputs).map((o) => o[0]);
       if (first.every((v) => v === null)) continue; // claims nothing: always safe
       const anyInputHigh = Object.values(l.timeline.inputs).some((i) => i[0]);
-      const buffered = l.id === 'hold';
-      expect(anyInputHigh || buffered).toBe(true);
+      expect(anyInputHigh || EXEMPT.has(l.id)).toBe(true);
     }
   });
 });

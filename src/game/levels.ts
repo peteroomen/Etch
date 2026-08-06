@@ -689,6 +689,55 @@ const edge: Level = {
   },
 };
 
+const divide: Level = {
+  id: 'divide',
+  chapter: 4,
+  title: 'Divide',
+  teaches: 'The first circuit that counts.',
+  brief: [
+    'Q must change state on every rising edge of the clock, and hold across every fall. It comes out at half the clock speed.',
+    'Your flip-flop copies D on each rising edge. You want it to do the opposite of what it is doing.',
+    'So tell it the opposite. There is only one signal on the board that always knows.',
+  ],
+  grid: { w: 20, h: 12 },
+  inputs: [{ name: 'clk', x: 0, y: 6 }],
+  outputs: [{ name: 'q', x: 17, y: 5 }],
+  palette: [...WIRE_X, 'not', 'dff'],
+  timeline: steps(
+    ['clk'],
+    ['q'],
+    [
+      { in: [0], out: [0] },
+      { in: [1], out: [1] }, // rise: toggles
+      { in: [0], out: [1] }, // fall: holds
+      { in: [1], out: [0] },
+      { in: [0], out: [0] },
+      { in: [1], out: [1] },
+      { in: [0], out: [1] },
+      { in: [1], out: [0] },
+      { in: [0], out: [0] },
+    ],
+  ),
+  /**
+   * Q inverted, back into D. On every rising edge the flip-flop copies the
+   * opposite of what it is holding, so it flips — and since it only looks on an
+   * edge, the feedback cannot race it round the loop.
+   *
+   * The output's starting value is decided by the tick rule's tie-break, but
+   * the flip-flop's insides are always emitted in the same order however the
+   * tile is placed, so every board that uses it wakes the same way. A test
+   * builds this at three offsets and requires an identical trace.
+   */
+  reference: (w) => {
+    run(w, 1, 6, 7, 6); // the clock, into the tile
+    placeBlueprint(w, 'dff', 8, 4);
+    run(w, 10, 5, 16, 5); // Q out
+    path(w, [12, 5], [12, 2], [6, 2]); // and back round
+    inv(w, 6, 3, S); // NOT(Q)
+    run(w, 6, 4, 7, 4); // into D
+  },
+};
+
 export const LEVELS: Level[] = [
   continuity,
   invert,
@@ -707,6 +756,7 @@ export const LEVELS: Level[] = [
   enable,
   gated,
   edge,
+  divide,
 ];
 
 export const LEVELS_BY_ID = new Map(LEVELS.map((l) => [l.id, l]));
