@@ -204,13 +204,33 @@ alone — the newer tools just make it cheaper:
 | Copy | 5 components, 3 ticks | 4 and 2 |
 | XOR | 8 components, 3 ticks | 6 and 2 |
 
-What is genuinely not constructible is the textbook *formula*
-`(a∨b) ∧ ¬(a∧b)`, because computing `a∨b` consumes the operands the other half
-needs. That is a real teaching moment, but it is about transcription, not about
-the function.
-
 The level briefs said "two ways out" where the honest line is "here is a third,
 and it costs more". They now name the price.
+
+#### Correction: the textbook formula is not impossible either
+
+This section used to end by claiming `(a∨b) ∧ ¬(a∧b)` is "genuinely not
+constructible", because computing `a∨b` consumes the operands the other half
+needs. That was written before the OR gate existed and was never revisited.
+
+An OR gate *reads* its operands instead of consuming them, so the formula
+transcribes literally. Measured by simulation:
+
+| route | cost |
+|---|---|
+| textbook, `a∨b` by an OR gate | 6 components, 3 ticks, correct |
+| textbook, `a∨b` by BUF copies | 7 components, 3 ticks, correct |
+| textbook, `a∨b` by merging | impossible — the merge eats the operands |
+| substrate-native `(a∧¬b) ∨ (¬a∧b)` | 6 components, 2 ticks |
+
+So the true claim is narrower and more interesting: the formula is
+untranscribable **in chapter 1's vocabulary**, and from Copy onward it is merely
+*dominated* — same component count, one tick slower.
+
+That is the better teaching moment, and it generalises. A formula is a claim
+about logic; what it costs is a claim about the technology you build it in. The
+game should let the standard design work and make the native one the reward,
+not forbid the standard one and call the substrate physics.
 
 ### The metrics only start trading at the half adder
 Ten of the eleven searchable levels have exactly one non-dominated solution, so

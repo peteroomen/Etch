@@ -77,11 +77,15 @@ const and2: Blueprint = {
 /**
  * XOR as (a ∧ ¬b) ∨ (¬a ∧ b).
  *
- * The textbook (a∨b) ∧ ¬(a∧b) cannot be built here: computing a∨b destroys the
- * a and b the NAND still needs. This form merges only fresh driven nets — an
- * inverter output with a buffered copy — so the inputs survive.
+ * The textbook (a∨b) ∧ ¬(a∧b) is buildable too, but only with an OR GATE for
+ * the a∨b: a gate READS its operands where a merge consumes them, and the NAND
+ * half still needs both. Measured, that route costs six components and THREE
+ * ticks. Written with a merge instead of a gate it cannot be transcribed at all,
+ * which is why chapter 1 cannot express it.
  *
- * Six components, two ticks.
+ * This form merges only fresh driven nets — an inverter output with a buffered
+ * copy — so the inputs survive and the depth stays at two. Same size as the
+ * textbook route, one tick faster.
  */
 const xor2: Blueprint = {
   id: 'xor2',

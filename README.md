@@ -54,15 +54,30 @@ The rule of thumb: **merge inverter outputs, never source nets.**
 | AND | NAND then invert | 3 inverters, 2 ticks | no |
 | XOR | `(a ∧ ¬b) ∨ (¬a ∧ b)` | 6 components, 2 ticks | no |
 
-NOR cheapest, AND dearest — the exact inverse of CMOS intuition, because gate
-cost is a property of the substrate rather than of the truth table. Chapter 2 is
+NOR cheapest, AND dearest — inverted from CMOS intuition, because gate cost is a
+property of the technology rather than of the truth table. This ordering is not
+invented: it is what NMOS gives you, where parallel pull-downs make NOR the
+natural primitive. NAND-is-cheapest is a CMOS artifact, not a law. Chapter 2 is
 ordered by ascending cost so the player discovers that rather than being told.
 
-The textbook `XOR = (a∨b) ∧ ¬(a∧b)` cannot be transcribed here at all: computing
-`a∨b` destroys the `a` and `b` that the NAND still needs. XOR itself is perfectly
-buildable — a copy is two inverters back to back — it just costs **8 components
-and 3 ticks** that way against **6 and 2** with a BUF or an OR gate. The wall is
-price, not possibility, and chapter 2's Copy level is where you meet it.
+### The textbook XOR is dominated, not forbidden
+
+`XOR = (a∨b) ∧ ¬(a∧b)` is worth following carefully, because what happens to it
+depends on what you are holding.
+
+With wire and inverters alone it genuinely cannot be transcribed: the only way
+to make `a∨b` is to merge, and merging destroys the `a` and `b` the other half
+still needs. XOR remains buildable — a copy is two inverters back to back — but
+only in a rearranged form, at **8 components and 3 ticks**.
+
+Once you have an OR gate the formula transcribes literally, because an OR gate
+*reads* its operands instead of consuming them. Measured: **6 components, 3
+ticks**, correct on every row. The substrate-native form is **6 and 2**.
+
+So the textbook answer is never wrong here, and stops being impossible the
+moment you own an OR gate. It is *dominated*, by exactly one tick. That is the
+better lesson: a formula is a claim about logic, and its price is a claim about
+the technology you build it in.
 
 ## Drawing
 

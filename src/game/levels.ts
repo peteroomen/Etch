@@ -273,11 +273,11 @@ const oneOrOther: Level = {
   id: 'one-or-other',
   chapter: 2,
   title: 'One or other',
-  teaches: 'XOR, the way this substrate allows it.',
+  teaches: 'XOR — and what a textbook formula costs here.',
   brief: [
     'OUT is HIGH when exactly one input is HIGH.',
-    'The textbook form is (A OR B) AND NOT (A AND B). Try it. Computing A OR B destroys the A and B the other half still needs.',
-    'A form that only ever joins freshly driven nets will work instead. Inverters alone do it in eight; with a cheap copy, six.',
+    'The textbook form is (A OR B) AND NOT (A AND B). It works here, and it is worth building once. Watch what the OR half costs you, and mind which way you make it.',
+    'Then look at the tick count. There is an arrangement one tick faster for the same number of components — it never joins anything but freshly driven nets.',
   ],
   grid: { w: 18, h: 12 },
   inputs: [

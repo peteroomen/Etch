@@ -23,6 +23,7 @@
  */
 
 import { PartKind } from './synth';
+import { SeqMacro, SeqPlacement, expandPlacements } from './macro';
 
 export interface SeqPart {
   kind: PartKind;
@@ -38,11 +39,14 @@ export interface SeqCircuit {
   /** net each source drives, or -1 when the source is unused */
   srcNet: number[];
   parts: SeqPart[];
+  /** blueprint tiles placed on the host nets, billed at their primitive count */
+  placements?: SeqPlacement[];
   /** net index carrying each required output */
   outputs: number[];
 }
 
 export interface SeqSolution {
+  /** billed components: loose primitives plus everything inside every tile */
   parts: number;
   /** worst settle depth across the timeline — the game's tick metric */
   depth: number;
@@ -63,9 +67,12 @@ export interface SeqSpec {
 export interface SeqOptions {
   spec: SeqSpec;
   kinds: PartKind[];
+  /** budget in BILLED components — a tile spends its whole primitive count */
   maxParts: number;
   maxNets?: number;
   nodeBudget?: number;
+  /** blueprints the player owns, placeable as one move each */
+  macros?: SeqMacro[];
 }
 
 export interface SeqResult {
@@ -89,13 +96,23 @@ export interface SeqResult {
 export function simulate(
   c: SeqCircuit,
   spec: SeqSpec,
+  macros?: Map<string, SeqMacro>,
 ): { traces: boolean[][]; worst: number; settled: boolean } {
   const cap = spec.cap ?? 64;
-  const n = c.nets;
+  // tiles expand to primitives over fresh nets, exactly as the game flattens
+  // them at placement; only the HOST nets are wireable, so only those are
+  // traced for output matching
+  const ex =
+    c.placements && c.placements.length
+      ? expandPlacements(c.nets, c.placements, macros ?? new Map())
+      : { nets: c.nets, parts: [] as SeqPart[] };
+  const hostNets = c.nets;
+  const n = ex.nets;
+  const allParts = c.parts.concat(ex.parts);
   const steps = spec.inputs.length;
   let values = new Uint8Array(n);
   const next = new Uint8Array(n);
-  const partOut = new Uint8Array(c.parts.length);
+  const partOut = new Uint8Array(allParts.length);
 
   /** Recompute net values from the current part outputs and the live inputs. */
   const commit = (ins: boolean[]) => {
@@ -103,14 +120,14 @@ export function simulate(
     for (let s = 0; s < c.k; s++) {
       if (c.srcNet[s] >= 0 && ins[s]) next[c.srcNet[s]] = 1;
     }
-    for (let p = 0; p < c.parts.length; p++) {
-      if (partOut[p]) next[c.parts[p].out] = 1;
+    for (let p = 0; p < allParts.length; p++) {
+      if (partOut[p]) next[allParts[p].out] = 1;
     }
   };
 
   const tick = (ins: boolean[]) => {
-    for (let p = 0; p < c.parts.length; p++) {
-      const part = c.parts[p];
+    for (let p = 0; p < allParts.length; p++) {
+      const part = allParts[p];
       switch (part.kind) {
         case 'not':
           partOut[p] = values[part.ins[0]] ? 0 : 1;
@@ -149,7 +166,8 @@ export function simulate(
   const boot = settle(spec.inputs[0]);
   if (!boot.settled) return { traces: [], worst: cap, settled: false };
 
-  const traces: boolean[][] = Array.from({ length: n }, () => new Array(steps));
+  // only host nets are wireable, so only those may carry a required output
+  const traces: boolean[][] = Array.from({ length: hostNets }, () => new Array(steps));
   let worst = 0;
   for (let s = 0; s < steps; s++) {
     // an input change commits without a tick, exactly as setInput does
@@ -158,7 +176,7 @@ export function simulate(
     const r = settle(spec.inputs[s]);
     if (!r.settled) return { traces: [], worst: cap, settled: false };
     if (r.ticks > worst) worst = r.ticks;
-    for (let i = 0; i < n; i++) traces[i][s] = values[i] === 1;
+    for (let i = 0; i < hostNets; i++) traces[i][s] = values[i] === 1;
   }
   return { traces, worst, settled: true };
 }
@@ -198,19 +216,49 @@ function sourceAssignments(k: number, n: number): number[][] {
   return out;
 }
 
-/** Every distinct part available over n nets. Order fixed, so part lists can be canonicalised. */
-function partCatalogue(kinds: PartKind[], n: number): SeqPart[] {
-  const out: SeqPart[] = [];
+/**
+ * One move the search can make: a loose primitive, or a whole tile.
+ *
+ * A tile costs what it bills — its flattened primitive count — so it competes
+ * with primitives on the game's own terms rather than being free structure.
+ */
+type Move =
+  | { tile: false; part: SeqPart; cost: number }
+  | { tile: true; place: SeqPlacement; nets: number[]; roles: ('in' | 'out')[]; cost: number };
+
+/** Every distinct move available over n nets. Order fixed, so lists can be canonicalised. */
+function moveCatalogue(kinds: PartKind[], n: number, macros: SeqMacro[]): Move[] {
+  const out: Move[] = [];
   for (const kind of kinds) {
     for (let o = 0; o < n; o++) {
       if (kind === 'or') {
         for (let a = 0; a < n; a++) {
-          for (let b = a; b < n; b++) out.push({ kind, ins: [a, b], out: o });
+          for (let b = a; b < n; b++) out.push({ tile: false, part: { kind, ins: [a, b], out: o }, cost: 1 });
         }
       } else {
-        for (let a = 0; a < n; a++) out.push({ kind, ins: [a], out: o });
+        for (let a = 0; a < n; a++) out.push({ tile: false, part: { kind, ins: [a], out: o }, cost: 1 });
       }
     }
+  }
+  for (const m of macros) {
+    const hosts: number[] = new Array(m.pinNet.length).fill(0);
+    const rec = (i: number) => {
+      if (i === hosts.length) {
+        out.push({
+          tile: true,
+          place: { macro: m.id, hosts: [...hosts] },
+          nets: [...hosts],
+          roles: m.pinRole,
+          cost: m.cost,
+        });
+        return;
+      }
+      for (let net = 0; net < n; net++) {
+        hosts[i] = net;
+        rec(i + 1);
+      }
+    };
+    rec(0);
   }
   return out;
 }
@@ -224,7 +272,15 @@ function partCatalogue(kinds: PartKind[], n: number): SeqPart[] {
  * rather than once per permutation.
  */
 export function synthesiseSeq(opts: SeqOptions): SeqResult {
-  const { spec, kinds, maxParts, maxNets = Math.min(6, maxParts + 2), nodeBudget = 2_000_000 } = opts;
+  const {
+    spec,
+    kinds,
+    maxParts,
+    maxNets = Math.min(6, maxParts + 2),
+    nodeBudget = 2_000_000,
+    macros = [],
+  } = opts;
+  const macroBy = new Map(macros.map((m) => [m.id, m]));
 
   const found = new Map<string, SeqSolution>();
   let states = 0;
@@ -234,9 +290,9 @@ export function synthesiseSeq(opts: SeqOptions): SeqResult {
     // there are only k + parts drivers, so more nets than that leaves one empty
     const netCap = Math.min(maxNets, spec.k + parts);
     for (let nets = 1; nets <= netCap; nets++) {
-      const catalogue = partCatalogue(kinds, nets);
+      const catalogue = moveCatalogue(kinds, nets, macros);
       for (const srcNet of sourceAssignments(spec.k, nets)) {
-        const chosen: SeqPart[] = [];
+        const chosen: Move[] = [];
 
         /**
          * How many distinct nets the prefix has mentioned, in index order, or
@@ -259,9 +315,13 @@ export function synthesiseSeq(opts: SeqOptions): SeqResult {
           };
           for (const s of srcNet) if (!meet(s)) return -1;
           for (let i = 0; i < upto; i++) {
-            const p = chosen[i];
-            for (const a of p.ins) if (!meet(a)) return -1;
-            if (!meet(p.out)) return -1;
+            const m = chosen[i];
+            if (m.tile) {
+              for (const h of m.nets) if (!meet(h)) return -1;
+            } else {
+              for (const a of m.part.ins) if (!meet(a)) return -1;
+              if (!meet(m.part.out)) return -1;
+            }
           }
           return seen;
         };
@@ -275,19 +335,38 @@ export function synthesiseSeq(opts: SeqOptions): SeqResult {
           if (mentioned(chosen.length) !== nets) return;
           // every net must be driven by something, or it is a net that is not there
           const driven = new Array<boolean>(nets).fill(false);
+          const read = new Array<boolean>(nets).fill(false);
           for (const s of srcNet) if (s >= 0) driven[s] = true;
-          for (const p of chosen) driven[p.out] = true;
+          for (const m of chosen) {
+            if (m.tile) {
+              m.nets.forEach((h, i) => {
+                if (m.roles[i] === 'out') driven[h] = true;
+                else read[h] = true;
+              });
+            } else {
+              driven[m.part.out] = true;
+              for (const a of m.part.ins) read[a] = true;
+            }
+          }
           for (let i = 0; i < nets; i++) if (!driven[i]) return;
 
           // a net that nothing reads is only worth building if it is an answer,
           // so no more of them may exist than the level has outputs
-          const read = new Array<boolean>(nets).fill(false);
-          for (const p of chosen) for (const a of p.ins) read[a] = true;
           let unread = 0;
           for (let i = 0; i < nets; i++) if (!read[i]) unread++;
           if (unread > spec.outputs.length) return;
 
-          const sim = simulate({ k: spec.k, nets, srcNet, parts: chosen, outputs: [] }, spec);
+          const loose = chosen.filter((m): m is Extract<Move, { tile: false }> => !m.tile);
+          const tiles = chosen.filter((m): m is Extract<Move, { tile: true }> => m.tile);
+          const circuit = {
+            k: spec.k,
+            nets,
+            srcNet: [...srcNet],
+            parts: loose.map((m) => ({ ...m.part, ins: [...m.part.ins] })),
+            placements: tiles.map((m) => ({ macro: m.place.macro, hosts: [...m.place.hosts] })),
+            outputs: [] as number[],
+          };
+          const sim = simulate(circuit, spec, macroBy);
           if (!sim.settled) return;
 
           const outputs: number[] = [];
@@ -296,36 +375,34 @@ export function synthesiseSeq(opts: SeqOptions): SeqResult {
             if (i < 0) return;
             outputs.push(i);
           }
-          const key = `${chosen.length}/${sim.worst}`;
+          const billed = chosen.reduce((n, m) => n + m.cost, 0);
+          const key = `${billed}/${sim.worst}`;
           if (found.has(key)) return;
           found.set(key, {
-            parts: chosen.length,
+            parts: billed,
             depth: sim.worst,
-            circuit: {
-              k: spec.k,
-              nets,
-              srcNet: [...srcNet],
-              parts: chosen.map((p) => ({ ...p, ins: [...p.ins] })),
-              outputs,
-            },
+            circuit: { ...circuit, outputs },
           });
         };
 
-        const pick = (start: number) => {
+        // spend the budget exactly: a tile consumes its whole billed cost
+        const pick = (start: number, remaining: number) => {
           if (truncated) return;
-          if (chosen.length === parts) {
+          if (remaining === 0) {
             test();
             return;
           }
           for (let i = start; i < catalogue.length; i++) {
-            chosen.push(catalogue[i]);
+            const move = catalogue[i];
+            if (move.cost > remaining) continue;
+            chosen.push(move);
             // prune the whole subtree the moment the labelling goes out of order
-            if (mentioned(chosen.length) >= 0) pick(i); // repeats allowed, permutations not
+            if (mentioned(chosen.length) >= 0) pick(i, remaining - move.cost);
             chosen.pop();
             if (truncated) return;
           }
         };
-        pick(0);
+        pick(0, parts);
         if (truncated) break;
       }
       if (truncated) break;
