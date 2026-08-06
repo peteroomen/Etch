@@ -397,11 +397,31 @@ function drawComponent(ctx: CanvasRenderingContext2D, world: World, x: number, y
     ctx.font = `600 ${Math.round(S_ * 0.4)}px ui-monospace, Menlo, monospace`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(name.slice(0, 3).toUpperCase(), fw / 2, fh / 2 + S_ * 0.02);
+    ctx.fillText(shortPin(name), fw / 2, fh / 2 + S_ * 0.02);
     return;
   }
 
   drawGlyph(ctx, kind, S_, rot, lit);
+}
+
+/**
+ * A pin name short enough to read at cell size.
+ *
+ * Truncating alone turns "qbar" into "QBA", which reads as a different signal
+ * entirely — and on a latch, where Q and Q-BAR sit one above the other, that is
+ * exactly the pair you cannot afford to confuse. Names that would truncate
+ * badly get an explicit short form.
+ */
+const SHORT_PIN: Record<string, string> = {
+  qbar: '/Q',
+  carry: 'CY',
+  cout: 'CO',
+  cin: 'CI',
+  sum: 'S',
+};
+
+export function shortPin(name: string): string {
+  return SHORT_PIN[name] ?? name.slice(0, 3).toUpperCase();
 }
 
 function drawBlueprintInstance(
@@ -449,6 +469,45 @@ function drawBlueprintInstance(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(bp.label, (bp.w * S_) / 2, (bp.h * S_) / 2);
+
+  // Name every pin, inside the body against its own edge.
+  //
+  // Until now a placed tile said only what it WAS, never which side was which,
+  // so wiring a latch meant guessing whether the top-left pin was D or EN and
+  // finding out by running it. The label sits on the pin's own edge so the
+  // name and the leg it belongs to cannot be read apart.
+  if (S_ >= 20) {
+    const fs = Math.max(7, Math.round(S_ * 0.24));
+    const pad = Math.max(2, S_ * 0.1);
+    ctx.font = `600 ${fs}px ui-monospace, Menlo, monospace`;
+    for (const pin of bp.pins) {
+      const cx = pin.dx * S_;
+      const cy = pin.dy * S_;
+      // an output names a signal the tile makes; an input names one it wants
+      ctx.fillStyle = pin.role === 'out' ? T.glyph : T.textDim;
+      switch (pin.dir) {
+        case W:
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(shortPin(pin.name), cx + inset + pad, cy + S_ / 2);
+          break;
+        case E:
+          ctx.textAlign = 'right';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(shortPin(pin.name), cx + S_ - inset - pad, cy + S_ / 2);
+          break;
+        case N:
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'top';
+          ctx.fillText(shortPin(pin.name), cx + S_ / 2, cy + inset + pad * 0.5);
+          break;
+        default:
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'bottom';
+          ctx.fillText(shortPin(pin.name), cx + S_ / 2, cy + S_ - inset - pad * 0.5);
+      }
+    }
+  }
   ctx.restore();
 }
 
