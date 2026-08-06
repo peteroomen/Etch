@@ -436,7 +436,7 @@ const hold: Level = {
     'Q goes HIGH the first time A does, and stays HIGH after A lets go.',
     'Everything you have built so far forgets. A component only ever answers the question in front of it.',
     'So give one its own answer to read.',
-    'Careful which one you loop. Two inverters in a ring have no starting value — they wake up whichever way the board happens to decide. Q has to start LOW here.',
+    'Careful which one you loop. Inverters in a ring have no settled starting value — they wake up whichever way the board happens to decide. Q has to start LOW here.',
   ],
   grid: { w: 14, h: 7 },
   inputs: [{ name: 'a', x: 0, y: 3 }],
