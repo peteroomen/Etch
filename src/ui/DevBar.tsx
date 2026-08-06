@@ -9,6 +9,7 @@
 import { LEVELS, LEVELS_BY_ID } from '../game/levels';
 import { commitEdit, loadLevel, session } from '../state/session';
 import { useUI } from '../state/store';
+import { forgetAll } from '../state/saved';
 
 export function DevBar() {
   const levelId = useUI((s) => s.levelId);
@@ -52,6 +53,7 @@ export function DevBar() {
       <button
         onClick={() => {
           localStorage.removeItem('etch.progress');
+          forgetAll();
           location.reload();
         }}
       >

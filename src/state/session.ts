@@ -13,6 +13,7 @@
 import { Level, createLevelWorld } from '../game/level';
 import { LIBRARY } from '../game/blueprints';
 import { linkAllPins } from '../sim/draw';
+import { deserialise, loadCurrent, saveCurrent } from './saved';
 import {
   Snapshot,
   World,
@@ -73,11 +74,16 @@ export function loadLevel(level: Level): void {
   session.level = level;
   session.undoStack = [];
   session.redoStack = [];
+  // whatever you had here last, rather than an empty grid you have to rebuild
+  const saved = loadCurrent(level.id);
+  if (saved) deserialiseInto(saved);
   touched();
 }
 
 export function loadSandbox(w = 40, h = 24): void {
   session.world = createWorld(w, h, LIBRARY);
+  const saved = loadCurrent(SANDBOX_ID);
+  if (saved) deserialise(session.world, saved);
   session.level = null;
   session.undoStack = [];
   session.redoStack = [];
@@ -103,7 +109,20 @@ export function commitEdit(): void {
   linkAllPins(session.world);
   rebuild(session.world);
   reset(session.world);
+  persist();
   touched();
+}
+
+/** Keep the board for next time. Once per gesture, not once per cell. */
+function persist(): void {
+  saveCurrent(session.level ? session.level.id : SANDBOX_ID, session.world);
+}
+
+/** The sandbox has no level, but it has a board worth keeping. */
+export const SANDBOX_ID = '__sandbox';
+
+function deserialiseInto(board: Parameters<typeof deserialise>[1]): void {
+  deserialise(session.world, board);
 }
 
 /**

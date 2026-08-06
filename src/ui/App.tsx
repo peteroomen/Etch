@@ -3,7 +3,8 @@ import { LIBRARY } from '../game/blueprints';
 import { LEVELS, LEVELS_BY_ID } from '../game/levels';
 import { Score, Verification, parFor, runTimeline } from '../game/level';
 import { reset } from '../sim/world';
-import { applyStep, loadLevel, session, settleStep } from '../state/session';
+import { applyStep, commitEdit, loadLevel, session, settleStep } from '../state/session';
+import { deserialise, loadBest, saveBest } from '../state/saved';
 import { useUI } from '../state/store';
 import { Board } from './Board';
 import { Palette } from './Palette';
@@ -77,17 +78,11 @@ function Result({
           <Metric label="TICKS" value={score.ticks} par={par.ticks} />
           <Metric label="AREA" value={score.area} par={par.area} />
         </div>
-        <p className="dim">
-          You cannot minimise all three. Fewer components usually means longer routing; shallower
-          logic usually costs more inverters.
-        </p>
         {unlocked && (
           <div className="unlock">
             <span className="eyebrow">Unlocked</span>
             <strong>{LIBRARY.get(unlocked)?.name ?? unlocked}</strong>
-            <p className="dim">
-              Placed as a tile, but it still bills every inverter inside it. Nothing is hidden.
-            </p>
+            <p className="dim">Still bills every inverter inside it.</p>
           </div>
         )}
         <div className="sheet-actions">
@@ -144,6 +139,8 @@ export function App() {
     setRunning(true);
     if (v.passed) {
       const improved = recordSolve(level.id, v.score, level.unlocks);
+      // keep the board that earned it, not just the numbers
+      if (improved) saveBest(level.id, session.world, v.score);
       setResult({ score: v.score, unlocked: level.unlocks ?? null, improved });
     }
   };
@@ -255,6 +252,21 @@ export function App() {
                 ))}
                 <Scope level={level} verification={null} compact />
               </>
+            )}
+
+            {level && tab === 'brief' && best && (
+              <button
+                className="btn recall"
+                onClick={() => {
+                  const saved = loadBest(level.id);
+                  if (!saved) return;
+                  deserialise(session.world, saved.board);
+                  commitEdit();
+                  setShowBrief(false);
+                }}
+              >
+                Load my best — {best.components}c {best.ticks}t {best.area}a
+              </button>
             )}
 
             {(!level || tab === 'rules') && (

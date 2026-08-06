@@ -18,10 +18,7 @@ export function LevelSelect() {
       <header className="menu-head">
         <div className="eyebrow">ETCH · REV A{DEV ? ' · DEV' : ''}</div>
         <h1>Build a computer out of inverters.</h1>
-        <p>
-          There is no AND gate here until you make one. Wires join instantly; only components cost
-          a tick. Joining two signals consumes them.
-        </p>
+        <p>There is no AND gate here until you make one.</p>
       </header>
 
       {chapters.map((ch) => (

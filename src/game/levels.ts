@@ -50,8 +50,7 @@ const continuity: Level = {
   teaches: 'A wire is a node, not a pipe.',
   brief: [
     'Connect IN to OUT.',
-    'Wire joined into one run is a single node. The signal is the same everywhere along it, at the same instant.',
-    'Wire costs you nothing and takes no time. However long you make it.',
+    'Wire joined into one run is a single node — the same signal everywhere along it, at the same instant.',
   ],
   grid: { w: 12, h: 7 },
   inputs: [{ name: 'a', x: 0, y: 3 }],
@@ -68,8 +67,7 @@ const invert: Level = {
   teaches: 'Components cost a tick. Wire does not.',
   brief: [
     'OUT must be the opposite of IN.',
-    'The inverter drives its output HIGH while its input is LOW. When the input goes HIGH it lets go — and a wire nothing is holding falls LOW on its own.',
-    'It answers one tick later. Components take time. Wire does not.',
+    'The inverter drives its output HIGH while its input is LOW. When the input goes HIGH it lets go, and a wire nothing is holding falls LOW on its own.',
   ],
   grid: { w: 12, h: 7 },
   inputs: [{ name: 'a', x: 0, y: 3 }],
@@ -91,7 +89,6 @@ const fanout: Level = {
   brief: [
     'All three outputs must follow IN.',
     'Reading a node is free. Attach as many things as you like — none of them changes it, and none of them costs you.',
-    'Joining is the direction that costs. You meet that next.',
   ],
   grid: { w: 12, h: 9 },
   inputs: [{ name: 'a', x: 0, y: 4 }],
@@ -118,7 +115,7 @@ const either: Level = {
   teaches: 'Joining two nets ORs them — and consumes them.',
   brief: [
     'OUT must be HIGH when either input is.',
-    'There is no OR component and you do not need one. Drive one node from two places: it goes HIGH when either driver pulls it HIGH. No component, no tick.',
+    'There is no OR component and you do not need one. Drive one node from two places: it goes HIGH when either driver pulls it HIGH.',
     'It costs you something else. A and B are one node now, and nothing downstream can tell them apart again.',
   ],
   grid: { w: 12, h: 7 },
@@ -142,8 +139,7 @@ const crossing: Level = {
   teaches: 'Wires that touch do not join. Crossing is explicit.',
   brief: [
     'A must reach the lower output, B the upper. Their paths have to cross.',
-    'Draw one run over another and you get a CROSSOVER: the two stay separate nodes. Place a JUNCTION instead and they become one.',
-    'Crossing is what happens by default, because on a small screen you will draw over your own wires constantly.',
+    'Draw one run over another and you get a CROSSOVER: the two stay separate. Place a JUNCTION instead and they become one.',
   ],
   grid: { w: 12, h: 9 },
   inputs: [
@@ -171,8 +167,7 @@ const neither: Level = {
   teaches: 'NOR is one inverter: join, then invert.',
   brief: [
     'OUT is HIGH only when both inputs are LOW.',
-    'One inverter and as much wire as you like.',
-    'When it works, look at what it cost. Gates are not priced here the way you were taught.',
+    'One inverter and as much wire as you like. When it works, look at what it cost.',
   ],
   grid: { w: 12, h: 7 },
   inputs: [
@@ -197,8 +192,7 @@ const notBoth: Level = {
   teaches: 'NAND is two inverters: invert first, then join.',
   brief: [
     'OUT is LOW only when both inputs are HIGH.',
-    'Last level you joined first, then inverted. Try it the other way round.',
-    'When it works, check whether A and B are still separate signals. That difference is about to matter.',
+    'Last level you joined first, then inverted. Try it the other way round, then check whether A and B are still separate.',
   ],
   grid: { w: 14, h: 7 },
   inputs: [
@@ -227,7 +221,6 @@ const both: Level = {
   brief: [
     'OUT is HIGH only when both inputs are HIGH.',
     'You built most of this last level. It needs one more thing done to it.',
-    'That makes AND the dearest of the three basic gates here — the exact reverse of what silicon charges for them.',
   ],
   grid: { w: 16, h: 7 },
   inputs: [
@@ -256,8 +249,8 @@ const copy: Level = {
   teaches: 'A signal feeding two joins needs two copies.',
   brief: [
     'Q1 is NOR of A and B. Q2 is NOR of A and C.',
-    'Both need A. But joining A into the first NOR uses it up — A and B become one node, and there is no A left for the second.',
-    'So make a second A, driven separately from the first. There is more than one way, and they do not all cost the same.',
+    'Both need A. Joining A into the first NOR uses it up, and there is no A left for the second.',
+    'So make a second A, driven separately. There is more than one way, and they do not all cost the same.',
   ],
   grid: { w: 16, h: 11 },
   inputs: [
@@ -300,8 +293,8 @@ const oneOrOther: Level = {
   teaches: 'XOR — and what a textbook formula costs here.',
   brief: [
     'OUT is HIGH when exactly one input is HIGH.',
-    'The textbook form is (A OR B) AND NOT (A AND B). It works here, and it is worth building once. Watch what the OR half costs you, and mind which way you make it.',
-    'Then look at the tick count. There is an arrangement one tick faster for the same number of components. It only ever joins signals a component has just made.',
+    'The textbook form is (A OR B) AND NOT (A AND B). It works here. Mind which way you make the OR.',
+    'Then look at the tick count. There is an arrangement one tick faster for the same components.',
   ],
   grid: { w: 18, h: 12 },
   inputs: [
@@ -348,7 +341,7 @@ const halfAdder: Level = {
   teaches: 'Two bits, and the first carry.',
   brief: [
     'SUM is the low bit of A plus B. CARRY is the high bit.',
-    'Two outputs, both wanting the same two inputs. Reading them costs nothing — it is joining that uses a signal up.',
+    'Two outputs, both wanting the same two inputs.',
   ],
   grid: { w: 16, h: 11 },
   inputs: [
@@ -384,7 +377,7 @@ const fullAdder: Level = {
   brief: [
     'Add three bits: A, B and a carry in.',
     'You already have something that adds two of them.',
-    'Either stage can raise a carry. Work out whether both ever can at once — the answer tells you how to combine them.',
+    'Either stage can raise a carry. Can both, at once?',
   ],
   grid: { w: 20, h: 11 },
   inputs: [
@@ -436,9 +429,8 @@ const hold: Level = {
   teaches: 'A loop remembers. That is all memory is.',
   brief: [
     'Q goes HIGH the first time A does, and stays HIGH after A lets go.',
-    'Everything you have built so far forgets. A component only ever answers the question in front of it.',
-    'So give one its own answer to read.',
-    'Careful which one you loop. Inverters in a ring have no settled starting value — they wake up whichever way the board happens to decide. Q has to start LOW here.',
+    'Everything you have built so far forgets. So give a component its own answer to read.',
+    'Careful which one you loop. Inverters in a ring have no settled starting value, and Q has to start LOW here.',
   ],
   grid: { w: 14, h: 7 },
   inputs: [{ name: 'a', x: 0, y: 3 }],
@@ -477,8 +469,8 @@ const setReset: Level = {
   teaches: 'Two nodes, each holding the other down.',
   brief: [
     'S drives Q high. R drives it low. With both low, Q holds what it had.',
-    'Your last circuit could only ever remember a one. This one has to forget again — and nothing here drives a wire low. A wire goes low when every driver lets go of it.',
-    'So R has to make something let go. That is what Q-BAR is for: not a second output, but the other half of the circuit.',
+    'Nothing here drives a wire low — it goes low when every driver lets go. So R has to make something let go.',
+    'That is what /Q is for: not a second output, but the other half of the circuit.',
   ],
   grid: { w: 14, h: 9 },
   inputs: [
@@ -523,9 +515,9 @@ const gated: Level = {
   title: 'Gated',
   teaches: 'Memory with a door on it.',
   brief: [
-    'EN is a door. While it is open, Q follows D. When it shuts, Q holds what it had — whatever D does next.',
+    'EN is a door. While it is open, Q follows D. When it shuts, Q holds what it had.',
     'You have a latch. It has no way of knowing when to listen.',
-    'The obvious build gates S and R separately. It works, and it costs. There is a cheaper one: try holding Q-BAR HIGH for as long as the door is open, and see what is left for Q to do.',
+    'The obvious build gates S and R separately, and it costs. There is a cheaper one: try holding /Q HIGH for as long as the door is open.',
   ],
   grid: { w: 20, h: 11 },
   inputs: [
@@ -587,8 +579,8 @@ const edge: Level = {
   title: 'Edge',
   teaches: 'Two doors that are never open at once.',
   brief: [
-    'Q takes whatever D is at the instant the clock RISES. Between rises it ignores D completely.',
-    'Your latch is transparent: while its door is open, Q chases D. Feed a circuit its own output through an open door and it races itself round the loop.',
+    'Q takes whatever D is at the instant the clock RISES, and ignores D between rises.',
+    'Your latch is transparent: while its door is open, Q chases D.',
     'You can place two doors. They do not have to be open at the same time.',
   ],
   grid: { w: 20, h: 13 },
