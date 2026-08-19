@@ -55,16 +55,32 @@ display. `Kind.Seg7` is now a real output device — its segments ARE the level'
 outputs — and the board finally shows a number rather than a light. Full write-up
 in `work/chapter5.md`.
 
-## Chapter 6 — decimal, and the nixie
+## ~~Chapter 6 — decimal, and the nixie~~ — built
 
-`Kind.Nixie` is still in the kind table and still unplaced. Its ten one-hot
-cathodes are a 74141's worth, which wants a counter that counts to nine and a
-4-to-10 decoder to drive it — and a decade counter needs a reset term, which is
-the first time a circuit here has to detect its own state and act on it. That is
-a chapter, not a level.
+Shipped: six levels from a clearable latch to a ten-stage ring counter driving
+the nixie. The decade counter got its state-detection lesson (ten is the only
+count reachable with q3 and q1 both set, so the detector is three components),
+and the chapter's spine turned out to be the TRADE between the two ways of
+counting to ten — 75 components and 12 ticks in four wires, against 170 and 3
+ticks in ten. Full write-up in `work/chapter6.md`.
 
-Two digits after that gives carry between decades, which is the last thing
-before arithmetic on displayed numbers.
+The 4-to-10 decoder was measured at 46 components (two ticks, one-hot on every
+digit) and deliberately routed around rather than built: the ring's output IS
+one-hot, so it drives the tube for nothing. That decoder is still the thing
+standing between here and two digits — and note that WITH it the binary route is
+cheaper end to end, 121 against 170. The ring buys ticks, not parts.
+
+## Chapter 7 — two digits, and carry between decades
+
+The last thing before arithmetic on displayed numbers. It needs the 4-to-10
+decoder chapter 6 avoided (or a second ring), and a carry from the units decade
+into the tens — which is the first signal in the game that crosses between two
+otherwise independent machines.
+
+Worth checking before committing to it: at 46 components for the decoder and
+170 per ring, a two-digit display is 300+ components and two 3x10 tubes on one
+board. That may want a bigger idea about hierarchy — the first time a level
+should perhaps place a tile the player never opens.
 
 ---
 

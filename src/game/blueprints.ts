@@ -453,6 +453,173 @@ const digit4: Blueprint = {
   ],
 };
 
+
+/**
+ * A D latch you can force to zero, whatever its door is doing.
+ *
+ * The plain latch tile has no way in — its cross-coupled pair is sealed. But the
+ * SR latch's R pin IS exposed, and R is already a clear: it pulls q-bar up, which
+ * makes the inverter holding q let go. The only extra care is that the SET term
+ * has to let go at the same moment, or the two ends fight over the same node —
+ * so CLEAR is merged into both, and the merge is free.
+ *
+ * Eight components. Two more than the latch without it.
+ */
+const dlatchc: Blueprint = {
+  id: 'dlatchc',
+  label: 'DLC',
+  name: 'D latch with clear',
+  w: 2,
+  h: 4,
+  nets: 6,
+  pins: [
+    { name: 'd', dx: 0, dy: 0, dir: W, role: 'in', net: 0 },
+    { name: 'en', dx: 0, dy: 1, dir: W, role: 'in', net: 1 },
+    { name: 'clr', dx: 0, dy: 3, dir: W, role: 'in', net: 2 },
+    { name: 'q', dx: 1, dy: 1, dir: E, role: 'out', net: 4 },
+  ],
+  parts: [
+    inv(0, 3), // ¬d  ┐
+    inv(1, 3), // ¬en ┼─ the set term, active low
+    buf(2, 3), // clr ┘  a clear forces it high, so SET lets go
+    inv(3, 4), //        S
+    buf(1, 5), // en  ┐  R, asserted while the door is open
+    buf(2, 5), // clr ┘  and by a clear
+  ],
+  subs: [{ id: 'srlatch', netMap: [4, 5, 4, 5] }],
+};
+
+/**
+ * The same clear, on an edge. Two clearable latches on opposite clock phases,
+ * and CLEAR reaches both — which is what makes it ASYNCHRONOUS: it does not wait
+ * for a clock, it just wins. Seventeen components.
+ */
+const dffc: Blueprint = {
+  id: 'dffc',
+  label: 'DFFC',
+  name: 'flip-flop with clear',
+  w: 2,
+  h: 4,
+  nets: 6,
+  pins: [
+    { name: 'd', dx: 0, dy: 0, dir: W, role: 'in', net: 0 },
+    { name: 'clk', dx: 0, dy: 1, dir: W, role: 'in', net: 1 },
+    { name: 'clr', dx: 0, dy: 3, dir: W, role: 'in', net: 2 },
+    { name: 'q', dx: 1, dy: 1, dir: E, role: 'out', net: 5 },
+  ],
+  parts: [inv(1, 3)],
+  subs: [
+    { id: 'dlatchc', netMap: [0, 3, 2, 4] }, // master, open while the clock is low
+    { id: 'dlatchc', netMap: [4, 1, 2, 5] }, // slave
+  ],
+};
+
+/**
+ * A decade counter: four toggling stages that wipe themselves at ten.
+ *
+ * The detector is two inverters and a merge, because TEN is the only count
+ * this counter can reach with both q3 and q1 set — eleven would too, but the
+ * clear fires before eleven can happen. So the whole "count to nine" behaviour
+ * costs three components on top of a four-bit counter.
+ *
+ * It is a RIPPLE counter, so the clear arrives while the wave is still moving
+ * through the stages. That is fine because the clear is a level rather than an
+ * edge: it holds every stage down until the count that caused it is gone.
+ * Seventy-five components, twelve ticks.
+ */
+const count10: Blueprint = {
+  id: 'count10',
+  label: 'CNT10',
+  name: 'decade counter',
+  w: 2,
+  h: 6,
+  nets: 11,
+  pins: [
+    { name: 'clk', dx: 0, dy: 0, dir: W, role: 'in', net: 0 },
+    // CLR shares the detector's own net: an outside clear and an at-ten clear
+    // are the same wire, and merging them is free
+    { name: 'clr', dx: 0, dy: 5, dir: W, role: 'in', net: 10 },
+    { name: 'q0', dx: 1, dy: 0, dir: E, role: 'out', net: 1 },
+    { name: 'q1', dx: 1, dy: 1, dir: E, role: 'out', net: 2 },
+    { name: 'q2', dx: 1, dy: 2, dir: E, role: 'out', net: 3 },
+    { name: 'q3', dx: 1, dy: 3, dir: E, role: 'out', net: 4 },
+  ],
+  parts: [
+    // each stage's own D, doubling as the next stage's clock
+    inv(1, 5), inv(2, 6), inv(3, 7), inv(4, 8),
+    inv(4, 9), inv(2, 9), inv(9, 10), // ten = q3 AND q1
+  ],
+  subs: [
+    { id: 'dffc', netMap: [5, 0, 10, 1] },
+    { id: 'dffc', netMap: [6, 5, 10, 2] },
+    { id: 'dffc', netMap: [7, 6, 10, 3] },
+    { id: 'dffc', netMap: [8, 7, 10, 4] },
+  ],
+};
+
+/**
+ * Four flip-flops in a line: a bit takes four clocks to cross it.
+ *
+ * Every stage shares one clock, so unlike the ripple counter there is no wave —
+ * the whole register moves at once, in five ticks however long it gets. Sixty-
+ * eight components.
+ */
+const shift4: Blueprint = {
+  id: 'shift4',
+  label: 'SH4',
+  name: '4-bit shift register',
+  w: 2,
+  h: 5,
+  nets: 7,
+  pins: [
+    { name: 'd', dx: 0, dy: 0, dir: W, role: 'in', net: 0 },
+    { name: 'clr', dx: 0, dy: 2, dir: W, role: 'in', net: 6 },
+    { name: 'clk', dx: 0, dy: 4, dir: W, role: 'in', net: 1 },
+    { name: 'q0', dx: 1, dy: 0, dir: E, role: 'out', net: 2 },
+    { name: 'q1', dx: 1, dy: 1, dir: E, role: 'out', net: 3 },
+    { name: 'q2', dx: 1, dy: 2, dir: E, role: 'out', net: 4 },
+    { name: 'q3', dx: 1, dy: 3, dir: E, role: 'out', net: 5 },
+  ],
+  parts: [],
+  subs: [
+    { id: 'dffc', netMap: [0, 1, 6, 2] },
+    { id: 'dffc', netMap: [2, 1, 6, 3] },
+    { id: 'dffc', netMap: [3, 1, 6, 4] },
+    { id: 'dffc', netMap: [4, 1, 6, 5] },
+  ],
+};
+
+/**
+ * A ring counter: a shift register whose last stage feeds its first.
+ *
+ * Exactly one bit goes round, so the outputs ARE one-hot and there is no decoder
+ * anywhere. Starting it costs nothing either: START and the last stage are
+ * MERGED into the first stage's D, which is a wired OR, which is a wire. Clear
+ * once, offer a one once, and it circulates for good.
+ *
+ * Sixty-eight components and THREE ticks. The decade counter does the same job
+ * in four wires instead of ten, but it ripples, so it takes twelve.
+ */
+const ring4: Blueprint = {
+  id: 'ring4',
+  label: 'RING',
+  name: '4-stage ring',
+  w: 2,
+  h: 5,
+  nets: 6,
+  pins: [
+    { name: 'clk', dx: 0, dy: 0, dir: W, role: 'in', net: 0 },
+    { name: 'clr', dx: 0, dy: 2, dir: W, role: 'in', net: 1 },
+    { name: 'st', dx: 0, dy: 4, dir: W, role: 'in', net: 2 },
+    { name: 'q0', dx: 1, dy: 0, dir: E, role: 'out', net: 3 },
+    { name: 'q1', dx: 1, dy: 1, dir: E, role: 'out', net: 4 },
+    { name: 'q2', dx: 1, dy: 2, dir: E, role: 'out', net: 5 },
+    { name: 'q3', dx: 1, dy: 3, dir: E, role: 'out', net: 2 }, // merged with START
+  ],
+  parts: [],
+  subs: [{ id: 'shift4', netMap: [2, 1, 0, 3, 4, 5, 2] }],
+};
+
 export const BLUEPRINTS: Blueprint[] = [
   nor2,
   nand2,
@@ -469,6 +636,11 @@ export const BLUEPRINTS: Blueprint[] = [
   count2,
   dec24,
   digit4,
+  dlatchc,
+  dffc,
+  count10,
+  shift4,
+  ring4,
 ];
 
 export const LIBRARY: BlueprintLibrary = new Map(BLUEPRINTS.map((b) => [b.id, b]));

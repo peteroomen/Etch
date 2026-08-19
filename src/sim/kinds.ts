@@ -123,16 +123,21 @@ function seg7Pins(): PinDef[] {
   }));
 }
 
-/** Ten one-hot cathodes, five down each side of a 2x5 body — a 74141's worth. */
+/**
+ * Ten one-hot cathodes, one per row down the west edge — a 74141's worth.
+ *
+ * One row per digit, in order, for the same reason the seven-segment display
+ * has its pins on one edge: a one-hot driver's outputs should be able to meet
+ * them as ten straight wires. The tube is tall and thin because a real one is.
+ */
 function nixiePins(): PinDef[] {
-  const pins: PinDef[] = [];
-  for (let i = 0; i < 5; i++) {
-    pins.push({ dx: 0, dy: i, dir: W, role: 'in', name: String(i) });
-  }
-  for (let i = 0; i < 5; i++) {
-    pins.push({ dx: 1, dy: i, dir: E, role: 'in', name: String(5 + i) });
-  }
-  return pins;
+  return Array.from({ length: 10 }, (_, i) => ({
+    dx: 0,
+    dy: i,
+    dir: W,
+    role: 'in' as const,
+    name: String(i),
+  }));
 }
 
 export const KIND_DEFS: Partial<Record<Kind, KindDef>> = {
@@ -215,8 +220,8 @@ export const KIND_DEFS: Partial<Record<Kind, KindDef>> = {
   [Kind.Nixie]: {
     kind: Kind.Nixie,
     label: 'NIXIE',
-    w: 2,
-    h: 5,
+    w: 3,
+    h: 10,
     rotatable: false,
     pins: nixiePins(),
   },

@@ -360,6 +360,67 @@ function drawSeg7(
   horiz(mid, on[6]); //            g — middle
 }
 
+/**
+ * A nixie tube: ten stacked numerals, and the one whose cathode is pulled up
+ * glows.
+ *
+ * Drawn as an actual numeral rather than a segment shape, because that is what
+ * a nixie is — ten separate wire digits behind each other in one envelope, not
+ * a digit assembled out of bars. The unlit ones are faintly visible for the
+ * same reason they are in the real tube.
+ *
+ * If more than one cathode is high, more than one numeral lights, overlapping.
+ * That is what the real tube does, and it is a better bug report than any error
+ * message: a driver that is not one-hot LOOKS wrong.
+ */
+function drawNixie(
+  ctx: CanvasRenderingContext2D,
+  world: World,
+  x: number,
+  y: number,
+  rot: Dir,
+  S_: number,
+  fw: number,
+  fh: number,
+) {
+  const pins = worldPins(Kind.Nixie, x, y, rot);
+  const cx = fw / 2;
+  const cy = fh / 2;
+  ctx.save();
+  ctx.font = `600 ${Math.round(S_ * 2.6)}px ui-monospace, Menlo, monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // the dark ones first, so a lit numeral always sits on top of the stack
+  const lit: number[] = [];
+  pins.forEach((p, i) => {
+    const net = pinNet(world, p.x, p.y, p.dir);
+    if (net >= 0 && (world.nets.value[net] as V) === HI) lit.push(i);
+  });
+  ctx.fillStyle = T.ledOff;
+  for (let i = 0; i < 10; i++) {
+    if (!lit.includes(i)) ctx.fillText(String(i), cx, cy);
+  }
+  for (const i of lit) {
+    withGlow(ctx, true, S_ * 2, () => {
+      ctx.fillStyle = T.ledOn;
+      ctx.fillText(String(i), cx, cy);
+    });
+  }
+  ctx.restore();
+
+  // a tick beside each pin, so it is obvious which row is which digit
+  if (S_ >= 18) {
+    ctx.fillStyle = T.glyph;
+    ctx.font = `500 ${Math.round(S_ * 0.34)}px ui-monospace, Menlo, monospace`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    pins.forEach((p, i) => {
+      ctx.fillText(String(i), S_ * 0.22, (p.y - y + 0.5) * S_);
+    });
+  }
+}
+
 function drawComponent(ctx: CanvasRenderingContext2D, world: World, x: number, y: number, vp: Viewport) {
   const S_ = vp.cell;
   const t = Math.max(3, Math.round(S_ * TRACE));
@@ -404,6 +465,11 @@ function drawComponent(ctx: CanvasRenderingContext2D, world: World, x: number, y
 
   if (kind === Kind.Seg7) {
     drawSeg7(ctx, world, x, y, rot, S_, fw, fh);
+    return;
+  }
+
+  if (kind === Kind.Nixie) {
+    drawNixie(ctx, world, x, y, rot, S_, fw, fh);
     return;
   }
 

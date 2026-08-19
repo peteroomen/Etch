@@ -45,6 +45,12 @@ describe('what the model can and cannot see', () => {
       'count-to-three',
       'every-digit',
       'show-the-count',
+      'clear-it',
+      'clear-on-the-edge',
+      'decade',
+      'pass-it-on',
+      'round-and-round',
+      'ten-in-a-ring',
     ]);
   });
 

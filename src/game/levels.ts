@@ -1171,6 +1171,431 @@ const showTheCount: Level = {
   },
 };
 
+
+// ------------------------------------------------------------------ chapter 6
+
+/**
+ * Chapter 6 is decimal, and it is really about two ways to count to ten.
+ *
+ * The binary route needs four wires and a circuit that watches its own output
+ * for the number ten — the first time anything here detects its own state and
+ * acts on it. The one-hot route needs ten wires and no detection at all, and it
+ * drives a ten-cathode tube for nothing. Neither is free: measured, they cost
+ * about the same in components, and the ring wins on ticks because it does not
+ * ripple. That is a trade, not an answer.
+ */
+
+const DIGITS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+
+const clearIt: Level = {
+  id: 'clear-it',
+  chapter: 6,
+  title: 'Clear',
+  teaches: 'A memory you can wipe, whatever else it is doing.',
+  brief: [
+    'Q works like your gated latch — but CLR forces it LOW at once, open door or shut.',
+    'Your latch tile has no way in. The SR latch does: one of its two inputs already pushes Q down.',
+    'The trouble is the other input pushing back. Whatever sets Q has to let go at the same moment.',
+  ],
+  grid: { w: 18, h: 12 },
+  inputs: [
+    { name: 'd', x: 0, y: 1 },
+    { name: 'en', x: 0, y: 3 },
+    { name: 'clr', x: 0, y: 5 },
+  ],
+  outputs: [{ name: 'q', x: 17, y: 3 }],
+  palette: [...WIRE_X, 'not', 'buf', 'srlatch'],
+  unlocks: 'dlatchc',
+  timeline: steps(
+    ['d', 'en', 'clr'],
+    ['q'],
+    [
+      { in: [0, 1, 0], out: [0] },
+      { in: [1, 1, 0], out: [1] }, // transparent
+      { in: [0, 0, 0], out: [1] }, // holds behind the shut door
+      { in: [1, 0, 0], out: [1] },
+      { in: [1, 0, 1], out: [0] }, // wiped with the door shut
+      { in: [1, 0, 0], out: [0] }, // and it stays wiped
+      { in: [1, 1, 0], out: [1] },
+      { in: [1, 1, 1], out: [0] }, // a clear beats an open door
+      { in: [1, 0, 0], out: [0] },
+    ],
+  ),
+  /**
+   *   set  = NOT( NOT(d) | NOT(en) | clr )   into the latch's S
+   *   reset =      en | clr                  into its R
+   *
+   * CLR appears in both, and both are merges, so it costs one buffer each way.
+   * Without the first one, a high D would go on holding S up while R pulled the
+   * other side down, and the latch would be told two things at once.
+   */
+  reference: (w) => {
+    run(w, 1, 1, 3, 1);
+    inv(w, 4, 1); // NOT(d)
+    run(w, 1, 3, 3, 3);
+    inv(w, 4, 3); // NOT(en)
+    run(w, 1, 5, 3, 5);
+    buf(w, 4, 5); // clr, so the set term lets go
+    path(w, [5, 1], [5, 5]); // the three of them, merged
+    inv(w, 6, 3); // S
+    run(w, 7, 3, 7, 3);
+
+    path(w, [2, 3], [2, 9]); // en, tapped for the reset side
+    buf(w, 3, 9);
+    path(w, [1, 5], [1, 10]); // and clr, down its own column
+    buf(w, 2, 10);
+    path(w, [3, 10], [4, 10], [4, 9]); // the two of them, merged: R
+    path(w, [4, 9], [7, 9], [7, 5]);
+
+    bp(w, 'srlatch', 8, 3);
+    run(w, 10, 3, 16, 3);
+  },
+};
+
+const clearOnTheEdge: Level = {
+  id: 'clear-on-the-edge',
+  chapter: 6,
+  title: 'Clear on the edge',
+  teaches: 'A clear that does not wait for the clock.',
+  brief: [
+    'Q takes D on a rising edge. CLR wipes it immediately — no clock required.',
+    'You built the edge out of two doors last chapter. Both of them can be wiped now.',
+  ],
+  grid: { w: 18, h: 13 },
+  inputs: [
+    { name: 'd', x: 0, y: 1 },
+    { name: 'clr', x: 0, y: 7 },
+    { name: 'clk', x: 0, y: 11 },
+  ],
+  outputs: [{ name: 'q', x: 17, y: 7 }],
+  palette: [...WIRE_X, 'not', 'buf', 'dlatchc'],
+  unlocks: 'dffc',
+  timeline: steps(
+    ['d', 'clk', 'clr'],
+    ['q'],
+    [
+      { in: [0, 0, 1], out: [0] },
+      { in: [0, 0, 0], out: [0] },
+      { in: [1, 1, 0], out: [1] }, // the rise takes d
+      { in: [0, 1, 0], out: [1] }, // still high, d falls: not transparent
+      { in: [0, 0, 0], out: [1] },
+      { in: [0, 1, 0], out: [0] }, // and this rise takes a ZERO, which a clear cannot fake
+      { in: [1, 0, 0], out: [0] },
+      { in: [1, 1, 0], out: [1] },
+      { in: [1, 0, 0], out: [1] },
+      { in: [1, 0, 1], out: [0] }, // wiped with no edge anywhere near it
+      { in: [1, 0, 0], out: [0] },
+      { in: [1, 1, 0], out: [1] },
+      { in: [1, 1, 1], out: [0] }, // and a clear beats the clock
+      { in: [1, 0, 0], out: [0] },
+    ],
+  ),
+  reference: (w) => {
+    run(w, 1, 1, 7, 1); // d into the master
+    path(w, [1, 11], [5, 11], [5, 2]);
+    inv(w, 6, 2); // NOT(clk): the master is open while the clock is LOW
+    run(w, 7, 2, 7, 2);
+    bp(w, 'dlatchc', 8, 1);
+
+    path(w, [1, 7], [3, 7], [3, 4], [7, 4]); // clr into the master
+    path(w, [3, 7], [3, 9], [11, 9], [11, 8]); // and into the slave
+
+    path(w, [10, 2], [10, 5], [11, 5]); // master's q into the slave's d
+    path(w, [5, 11], [10, 11], [10, 6], [11, 6]); // the clock into the slave's door
+    bp(w, 'dlatchc', 12, 5);
+    run(w, 14, 6, 14, 6);
+    path(w, [14, 6], [16, 6], [16, 7]);
+  },
+};
+
+const decade: Level = {
+  id: 'decade',
+  chapter: 6,
+  title: 'Decade',
+  teaches: 'A counter that watches itself and starts again.',
+  brief: [
+    'Count 0 to 9 and then back to 0 — four bits, but only ten of the sixteen counts.',
+    'A four-bit counter reaches ten on its own. Your job is to notice, and to wipe it the instant it does.',
+    'Ten is 1010. Ask which bits that needs, and which of them any smaller count already has.',
+  ],
+  grid: { w: 32, h: 14 },
+  inputs: [
+    { name: 'clk', x: 0, y: 4 },
+    { name: 'clr', x: 0, y: 8 },
+  ],
+  outputs: [
+    { name: 'q0', x: 31, y: 10 },
+    { name: 'q1', x: 31, y: 11 },
+    { name: 'q2', x: 31, y: 12 },
+    { name: 'q3', x: 31, y: 13 },
+  ],
+  palette: [...WIRE_X, 'not', 'buf', 'dffc'],
+  unlocks: 'count10',
+  timeline: steps(
+    ['clk', 'clr'],
+    ['q0', 'q1', 'q2', 'q3'],
+    (() => {
+      const bits = (v: number) => [v & 1, (v >> 1) & 1, (v >> 2) & 1, (v >> 3) & 1];
+      const rows: { in: number[]; out: (number | null)[] }[] = [
+        { in: [0, 1], out: bits(0) }, // wiped first, so nothing here is a guess
+        { in: [0, 0], out: bits(0) },
+      ];
+      for (let i = 0; i < 21; i++) rows.push({ in: [(i + 1) % 2, 0], out: bits(Math.floor(i / 2) + 1 > 9 ? (Math.floor(i / 2) + 1) % 10 : Math.floor(i / 2) + 1) });
+      rows.push({ in: [0, 1], out: bits(0) }); // and wiped again, mid-count
+      rows.push({ in: [0, 0], out: bits(0) });
+      rows.push({ in: [1, 0], out: bits(1) });
+      return rows;
+    })(),
+  ),
+  /**
+   * Four toggling stages, each clocked by the one below it. NOT(q) does two jobs
+   * per stage — its own D, and the next stage's clock — exactly as in the 2-bit
+   * counter, so widening costs nothing but repetition.
+   *
+   * The whole "stop at nine" behaviour is three components. Ten is 1010, and it
+   * is the only count this can REACH with q3 and q1 both set, so a NOR of those
+   * two is the detector, and its output goes straight to every stage's clear.
+   */
+  reference: (w) => {
+    run(w, 1, 4, 2, 4); // the clock into the first stage
+    run(w, 1, 8, 2, 8); // and CLR onto the same line the at-ten detector drives
+    for (let i = 0; i < 4; i++) {
+      const x = 3 + i * 6;
+      bp(w, 'dffc', x, 3);
+      run(w, x + 2, 4, x + 2, 4); // q
+      inv(w, x + 3, 4); // NOT(q): this stage's own D, and the next stage's clock
+      if (i < 3) run(w, x + 4, 4, x + 5, 4);
+      path(w, [x + 4, 4], [x + 4, 2], [x - 1, 2], [x - 1, 3]); // round to its own D
+      path(w, [x - 1, 8], [x - 1, 6]); // clear, up off the spine
+      path(w, [x + 2, 4], [x + 2, 10 + i], [30, 10 + i]); // and q, out to its pin
+    }
+
+    run(w, 2, 8, 14, 8); // the clear spine, in two halves
+    run(w, 16, 8, 29, 8);
+    path(w, [14, 8], [14, 7], [16, 7], [16, 8]);
+
+    // both read their bit where its line runs STRAIGHT — a crossover would hand
+    // back whatever is passing through horizontally instead
+    inv(w, 12, 9); // NOT(q1) ┐
+    inv(w, 24, 6); // NOT(q3) ┘ merged: ten, and nothing smaller can reach it
+    path(w, [25, 6], [25, 9]);
+    run(w, 13, 9, 25, 9);
+    inv(w, 15, 8, N); // and the NOR of them is the clear
+  },
+};
+
+const passItOn: Level = {
+  id: 'pass-it-on',
+  chapter: 6,
+  title: 'Pass it on',
+  teaches: 'A line of flip-flops. A bit takes a clock to move one place.',
+  brief: [
+    'Whatever D was at a rising edge appears at Q0. What was at Q0 moves to Q1, and so on down.',
+    'Every stage shares the clock, so nothing ripples — the whole line moves at once.',
+  ],
+  grid: { w: 28, h: 15 },
+  inputs: [
+    { name: 'd', x: 0, y: 1 },
+    { name: 'clr', x: 0, y: 6 },
+    { name: 'clk', x: 0, y: 8 },
+  ],
+  outputs: [
+    { name: 'q0', x: 27, y: 10 },
+    { name: 'q1', x: 27, y: 11 },
+    { name: 'q2', x: 27, y: 12 },
+    { name: 'q3', x: 27, y: 13 },
+  ],
+  palette: [...WIRE_X, 'not', 'buf', 'dffc'],
+  unlocks: 'shift4',
+  timeline: steps(
+    ['d', 'clk', 'clr'],
+    ['q0', 'q1', 'q2', 'q3'],
+    [
+      { in: [0, 0, 1], out: [0, 0, 0, 0] },
+      { in: [1, 0, 0], out: [0, 0, 0, 0] },
+      { in: [1, 1, 0], out: [1, 0, 0, 0] }, // in it goes
+      { in: [0, 0, 0], out: [1, 0, 0, 0] },
+      { in: [0, 1, 0], out: [0, 1, 0, 0] }, // and along
+      { in: [0, 0, 0], out: [0, 1, 0, 0] },
+      { in: [0, 1, 0], out: [0, 0, 1, 0] },
+      { in: [0, 0, 0], out: [0, 0, 1, 0] },
+      { in: [0, 1, 0], out: [0, 0, 0, 1] },
+      { in: [0, 0, 0], out: [0, 0, 0, 1] },
+      { in: [0, 1, 0], out: [0, 0, 0, 0] }, // and out the far end
+    ],
+  ),
+  /**
+   * One clock reaches all four stages and one clear does too, because reading a
+   * net never consumes it — so the two buses cost four wires and no components
+   * at all. The only thing joining one stage to the next is q into d.
+   */
+  reference: (w) => {
+    run(w, 1, 1, 3, 1); // d into the first stage
+    run(w, 1, 6, 23, 6); // the clear bus
+    run(w, 1, 8, 23, 8); // and the clock bus, under it
+    for (let i = 0; i < 4; i++) {
+      const x = 4 + i * 6;
+      bp(w, 'dffc', x, 1);
+      path(w, [x - 1, 6], [x - 1, 4]); // clear, straight up off its bus
+      path(w, [x - 2, 8], [x - 2, 2], [x - 1, 2]); // clock, round the clear line
+      path(w, [x + 2, 2], [x + 2, 10 + i], [26, 10 + i]); // q, out to its pin
+      if (i < 3) path(w, [x + 2, 2], [x + 2, 0], [x + 5, 0], [x + 5, 1]); // and on to the next d
+    }
+  },
+};
+
+const roundAndRound: Level = {
+  id: 'round-and-round',
+  chapter: 6,
+  title: 'Round and round',
+  teaches: 'One bit going in a circle is a counter with no decoder.',
+  brief: [
+    'Exactly one output is HIGH, and the HIGH one moves along by one every rising edge, wrapping at the end.',
+    'You have a line of flip-flops. Join the far end back to the near one.',
+    'Nothing is in it to start with. CLR empties it and ST offers it a single one — and offering costs no components at all.',
+  ],
+  grid: { w: 20, h: 12 },
+  inputs: [
+    { name: 'clk', x: 0, y: 1 },
+    { name: 'clr', x: 0, y: 3 },
+    { name: 'st', x: 0, y: 6 },
+  ],
+  outputs: [
+    { name: 'q0', x: 19, y: 5 },
+    { name: 'q1', x: 19, y: 6 },
+    { name: 'q2', x: 19, y: 7 },
+    { name: 'q3', x: 19, y: 8 },
+  ],
+  palette: [...WIRE_X, 'not', 'buf', 'shift4'],
+  timeline: steps(
+    ['clk', 'clr', 'st'],
+    ['q0', 'q1', 'q2', 'q3'],
+    [
+      // START is MERGED into the last stage's line, so while it is held that
+      // line reads HIGH. Nothing is claimed about q3 until it is let go.
+      { in: [0, 1, 0], out: [0, 0, 0, 0] },
+      { in: [0, 0, 1], out: [0, 0, 0, null] },
+      { in: [1, 0, 1], out: [1, 0, 0, null] },
+      { in: [1, 0, 0], out: [1, 0, 0, 0] },
+      { in: [0, 0, 0], out: [1, 0, 0, 0] },
+      { in: [1, 0, 0], out: [0, 1, 0, 0] },
+      { in: [0, 0, 0], out: [0, 1, 0, 0] },
+      { in: [1, 0, 0], out: [0, 0, 1, 0] },
+      { in: [0, 1, 0], out: [0, 0, 0, 0] }, // wiped mid-turn
+      { in: [0, 0, 0], out: [0, 0, 0, 0] },
+      { in: [1, 0, 0], out: [0, 0, 0, 0] }, // and a clock with nothing in it moves nothing
+      { in: [0, 0, 1], out: [0, 0, 0, null] },
+      { in: [1, 0, 1], out: [1, 0, 0, null] }, // offered another one
+      { in: [1, 0, 0], out: [1, 0, 0, 0] },
+      { in: [0, 0, 0], out: [1, 0, 0, 0] },
+      { in: [1, 0, 0], out: [0, 1, 0, 0] },
+      { in: [0, 0, 0], out: [0, 1, 0, 0] },
+    ],
+  ),
+  /**
+   * The whole level is wire. START and the last stage are merged into the first
+   * stage's D — a wired OR, which costs nothing — so offering the ring its one
+   * bit and handing the bit back round are the same piece of wire.
+   */
+  reference: (w) => {
+    path(w, [1, 1], [3, 1], [3, 9], [7, 9]); // clk
+    path(w, [1, 3], [4, 3], [4, 7], [7, 7]); // clr
+    bp(w, 'shift4', 8, 5);
+    run(w, 10, 5, 18, 5);
+    run(w, 10, 6, 18, 6);
+    run(w, 10, 7, 18, 7);
+    run(w, 10, 8, 18, 8);
+    path(w, [1, 6], [5, 6], [5, 5], [7, 5]); // st, into the first stage
+    path(w, [10, 8], [12, 8], [12, 10], [5, 10], [5, 6]); // and the last stage with it
+  },
+};
+
+const tenInARing: Level = {
+  id: 'ten-in-a-ring',
+  chapter: 6,
+  title: 'Ten in a ring',
+  teaches: 'Ten states, ten wires, and a tube that needs no decoder.',
+  brief: [
+    'The tube has ten cathodes and lights the one you pull HIGH. Count 0 to 9 on it.',
+    'Your decade counter says the same number in four wires — but four wires into ten cathodes is a decoder, and the cheapest one here is forty-six components.',
+    'Ten stages of ring is a hundred and seventy. It is not cheaper. Look at the ticks instead.',
+  ],
+  grid: { w: 25, h: 19 },
+  inputs: [
+    { name: 'st', x: 0, y: 14 },
+    { name: 'clk', x: 0, y: 16 },
+    { name: 'clr', x: 0, y: 18 },
+  ],
+  outputs: [],
+  display: { kind: Kind.Nixie, x: 22, y: 1 },
+  palette: [...WIRE_X, 'not', 'buf', 'dffc', 'shift4'],
+  timeline: steps(
+    ['clk', 'clr', 'st'],
+    DIGITS,
+    (() => {
+      const rows: { in: number[]; out: (number | null)[] }[] = [
+        { in: [0, 1, 0], out: DIGITS.map(() => 0) },
+        { in: [0, 0, 1], out: DIGITS.map((_, i) => (i === 9 ? null : 0)) },
+        { in: [1, 0, 1], out: DIGITS.map((_, i) => (i === 9 ? null : i === 0 ? 1 : 0)) },
+      ];
+      for (let i = 0; i < 22; i++) {
+        const lit = Math.floor(i / 2) % 10;
+        rows.push({ in: [(i + 1) % 2, 0, 0], out: DIGITS.map((_, d) => (d === lit ? 1 : 0)) });
+      }
+      // wiped mid-turn, and a clock over an empty ring lights nothing at all
+      rows.push({ in: [0, 1, 0], out: DIGITS.map(() => 0) });
+      rows.push({ in: [1, 0, 0], out: DIGITS.map(() => 0) });
+      rows.push({ in: [0, 0, 1], out: DIGITS.map((_, i) => (i === 9 ? null : 0)) });
+      rows.push({ in: [1, 0, 1], out: DIGITS.map((_, i) => (i === 9 ? null : i === 0 ? 1 : 0)) });
+      for (let i = 0; i < 4; i++) {
+        const lit = Math.floor(i / 2) % 10;
+        rows.push({ in: [(i + 1) % 2, 0, 0], out: DIGITS.map((_, d) => (d === lit ? 1 : 0)) });
+      }
+      return rows;
+    })(),
+  ),
+  /**
+   * Ten stages in a staircase, so each block's outputs land on the tube row they
+   * belong to and the ten wires across are straight.
+   *
+   * The clock and the clear each reach four blocks off one bus, and they arrive
+   * in SEPARATE columns because a flip-flop's clock and clear pins are two rows
+   * apart on the same edge — one column cannot serve both without shorting them.
+   */
+  reference: (w) => {
+    bp(w, 'shift4', 5, 1); // q0..q3
+    bp(w, 'shift4', 9, 5); // q4..q7
+    bp(w, 'dffc', 14, 9); // q8
+    bp(w, 'dffc', 18, 12); // q9
+
+    // the ten cathode lines, one per row
+    for (let r = 1; r <= 4; r++) run(w, 7, r, 21, r);
+    for (let r = 5; r <= 8; r++) run(w, 11, r, 21, r);
+    path(w, [16, 10], [16, 9], [21, 9]);
+    path(w, [20, 13], [20, 10], [21, 10]);
+
+    // and the chain, tapped off those same lines
+    path(w, [8, 4], [8, 5]);
+    path(w, [13, 8], [13, 9]);
+    path(w, [16, 10], [17, 10], [17, 12]);
+
+    run(w, 1, 16, 16, 16); // the clock bus
+    run(w, 1, 18, 17, 18); // the clear bus, below it
+    path(w, [4, 16], [4, 5]); // clocks, up their own columns
+    path(w, [8, 16], [8, 9]);
+    path(w, [12, 16], [12, 10], [13, 10]);
+    path(w, [16, 16], [16, 13], [17, 13]);
+    path(w, [3, 18], [3, 3], [4, 3]); // clears, up theirs
+    path(w, [7, 18], [7, 7], [8, 7]);
+    path(w, [13, 18], [13, 12]);
+    path(w, [17, 18], [17, 15]);
+
+    // the last stage back to the first, with START merged in on the way
+    path(w, [20, 13], [20, 17], [2, 17], [2, 1], [4, 1]);
+    path(w, [1, 14], [2, 14]);
+  },
+};
+
 export const LEVELS: Level[] = [
   continuity,
   invert,
@@ -1197,6 +1622,12 @@ export const LEVELS: Level[] = [
   naughtAndOne,
   everyDigit,
   showTheCount,
+  clearIt,
+  clearOnTheEdge,
+  decade,
+  passItOn,
+  roundAndRound,
+  tenInARing,
 ];
 
 export const LEVELS_BY_ID = new Map(LEVELS.map((l) => [l.id, l]));

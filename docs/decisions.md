@@ -388,3 +388,28 @@ has no way to say "this output pin and that input pin are the same host net".
 The tile bills nine where the hand-built matrix bills eight, and that gap is
 left visible rather than papered over: packaging has a price here, and a player
 who builds it themselves should get the better score.
+
+### A clear is a reset pin you already had
+The latch tile is sealed, so an async clear cannot be added from outside it. But
+the SR latch's R pin is exposed and R already pulls q-bar up, which makes the
+inverter holding q let go — so the clear is not new machinery, it is the reset
+input the substrate always had, reached through the one tile that exposes it.
+
+What it costs is the discipline of making the SET term let go at the same
+moment. Drive one end down while the other is still holding the node up and the
+latch is being told two things at once. CLEAR is therefore merged into both the
+set term and the reset, and both merges are free.
+
+### Two ways to count to ten, and neither wins
+A binary decade counter says the number in four wires for 75 components and 12
+ticks. A ten-stage ring says it in ten wires for 170 components and 3. The ring
+is more than twice the parts and four times faster, and its output is already
+one-hot so it drives a ten-cathode tube for nothing, where the binary route
+would need a ~50-component decoder.
+
+Both are shipped, and the chapter says plainly that this is a trade. It is the
+first place in the game where two solutions are genuinely non-dominated, which
+is what the balance sweep has been asking for since chapter 3 — the tick
+difference is structural (a ripple counter's depth grows with its stages; a
+synchronous ring's does not), so it cannot be optimised away by a cleverer
+layout.
