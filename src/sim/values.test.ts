@@ -35,7 +35,7 @@ describe('the four-state resolver', () => {
   describe('tier 1, where nothing ever drives a strong low', () => {
     // Every driver pulls HIGH or lets go; each net has a weak pull-down.
     const wiredOr = (...drivers: (typeof HI | typeof Z)[]) =>
-      resolve(drivers.reduce((a, d) => a | driveBit(d), 0), LO);
+      resolve(drivers.reduce<number>((a, d) => a | driveBit(d), 0), LO);
 
     it('reads as OR across any number of drivers', () => {
       expect(wiredOr()).toBe(LO);

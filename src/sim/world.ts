@@ -11,7 +11,17 @@
  * is unreachable until transistors introduce a strong low.
  */
 
-import { Dir, E, Kind, isWireFamily, kindDef, worldPins } from './kinds';
+import {
+  DIR_VEC,
+  Dir,
+  E,
+  Kind,
+  isDisplay,
+  isWireFamily,
+  kindDef,
+  opposite,
+  worldPins,
+} from './kinds';
 import { Grid, at, cellKind, cellRot, cloneGrid, createGrid, idx, inBounds, pack } from './grid';
 import { NetMap, NetTable, createNetTable, extractNets, growNets, netAtPin, netValue } from './nets';
 import { HI, LO, V, X, Z, driveBit, resolve } from './values';
@@ -59,6 +69,26 @@ export interface World {
   inputs: Map<string, boolean>;
   /** "x,y" -> level pin name, for sources and sinks */
   pinNames: Map<string, string>;
+  /** "x,y,dir" -> net, for pins connected by touching rather than by wire */
+  bridged: Map<string, number>;
+  /**
+   * "x,y" -> switch position.
+   *
+   * rebuild() makes fresh components with state 0, so without somewhere durable
+   * to keep it every toggle was silently lost on the next edit.
+   */
+  switches: Map<string, number>;
+  /**
+   * The last two net-value snapshots, for detecting a period-2 oscillation.
+   *
+   * A symmetric feedback loop — a cross-coupled pair from the all-zero
+   * power-on state — has no simultaneous fixed point, so it flips forever.
+   * Catching that costs two snapshots and buys memory that actually works.
+   */
+  hist1: Uint8Array;
+  hist2: Uint8Array;
+  /** how many of the snapshots are meaningful yet */
+  histDepth: number;
 }
 
 const EMPTY_LIBRARY: BlueprintLibrary = new Map();
@@ -80,6 +110,11 @@ export function createWorld(w: number, h: number, library: BlueprintLibrary = EM
     dirty: true,
     inputs: new Map(),
     pinNames: new Map(),
+    bridged: new Map(),
+    switches: new Map(),
+    hist1: new Uint8Array(0),
+    hist2: new Uint8Array(0),
+    histDepth: 0,
   };
   rebuild(world);
   return world;
@@ -261,7 +296,101 @@ function mkComp(
  * joins the two wires feeding it — and the player sees them light as one node,
  * which is the honest signal that the gate consumed its inputs.
  */
-function aliasPlacementPins(world: World, map: NetMap): void {
+interface PinSite {
+  x: number;
+  y: number;
+  dir: Dir;
+}
+
+const siteKey = (x: number, y: number, dir: Dir) => `${x},${y},${dir}`;
+
+/** Every pin on the board, from primitives and from blueprint instances. */
+function allPinSites(world: World): PinSite[] {
+  const g = world.grid;
+  const out: PinSite[] = [];
+  for (let y = 0; y < g.h; y++) {
+    for (let x = 0; x < g.w; x++) {
+      const cell = at(g, x, y);
+      const kind = cellKind(cell);
+      if (kind === Kind.Empty || isWireFamily(kind) || kind === Kind.Blueprint) continue;
+      for (const p of worldPins(kind, x, y, cellRot(cell))) {
+        out.push({ x: p.x, y: p.y, dir: p.dir });
+      }
+    }
+  }
+  for (const place of world.placements) {
+    const bp = world.library.get(place.id);
+    if (!bp) continue;
+    for (const pin of bp.pins) {
+      out.push({ x: place.x + pin.dx, y: place.y + pin.dy, dir: pin.dir });
+    }
+  }
+  return out;
+}
+
+/**
+ * Connect pins that face each other with no wire between them.
+ *
+ * A pin binds through a NET, and a net needs at least one wire cell to exist —
+ * so without this, an inverter whose output pad touches a sink's input pad is
+ * not connected to it, while the board draws the two stubs meeting. That is the
+ * picture lying about what is joined, and it cost a playtester an evening.
+ *
+ * Touching pins get a net of their own, allocated past the wire nets.
+ */
+function bridgeTouchingPins(world: World, map: NetMap): Map<string, number> {
+  const g = world.grid;
+  const bridged = new Map<string, number>();
+  const sites = allPinSites(world).filter((p) => netAtPin(g, map, p.x, p.y, p.dir) < 0);
+  if (sites.length < 2) return bridged;
+
+  const index = new Map<string, number>();
+  sites.forEach((p, i) => index.set(siteKey(p.x, p.y, p.dir), i));
+
+  const parent = sites.map((_, i) => i);
+  const find = (a: number): number => {
+    while (parent[a] !== a) a = parent[a] = parent[parent[a]];
+    return a;
+  };
+  const union = (a: number, b: number) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent[Math.max(ra, rb)] = Math.min(ra, rb);
+  };
+
+  let joined = false;
+  sites.forEach((p, i) => {
+    const [dx, dy] = DIR_VEC[p.dir];
+    const j = index.get(siteKey(p.x + dx, p.y + dy, opposite(p.dir)));
+    if (j !== undefined) {
+      union(i, j);
+      joined = true;
+    }
+  });
+  if (!joined) return bridged;
+
+  // a pin that touched nothing keeps no net; only real groups get one
+  const size = new Map<number, number>();
+  sites.forEach((_, i) => {
+    const root = find(i);
+    size.set(root, (size.get(root) ?? 0) + 1);
+  });
+
+  const groupNet = new Map<number, number>();
+  sites.forEach((p, i) => {
+    const root = find(i);
+    if ((size.get(root) ?? 0) < 2) return;
+    let net = groupNet.get(root);
+    if (net === undefined) {
+      net = map.count++;
+      groupNet.set(root, net);
+    }
+    bridged.set(siteKey(p.x, p.y, p.dir), net);
+  });
+  return bridged;
+}
+
+function aliasPlacementPins(world: World, map: NetMap, bridged: Map<string, number>): void {
   const g = world.grid;
   const parent = new Int32Array(map.count);
   for (let i = 0; i < map.count; i++) parent[i] = i;
@@ -288,7 +417,10 @@ function aliasPlacementPins(world: World, map: NetMap): void {
     if (!bp) continue;
     const byInternal = new Map<number, number[]>();
     bp.pins.forEach((pin) => {
-      const host = netAtPin(g, map, place.x + pin.dx, place.y + pin.dy, pin.dir);
+      const px = place.x + pin.dx;
+      const py = place.y + pin.dy;
+      const wired = netAtPin(g, map, px, py, pin.dir);
+      const host = wired >= 0 ? wired : (bridged.get(siteKey(px, py, pin.dir)) ?? -1);
       if (host < 0) return;
       const list = byInternal.get(pin.net);
       if (list) list.push(host);
@@ -315,15 +447,22 @@ function aliasPlacementPins(world: World, map: NetMap): void {
     if (map.netA[i] >= 0) map.netA[i] = remap[map.netA[i]];
     if (map.netB[i] >= 0) map.netB[i] = remap[map.netB[i]];
   }
+  for (const [key, net] of bridged) bridged.set(key, remap[net]);
   map.count = next;
 }
 
 export function rebuild(world: World): void {
   const g = world.grid;
   const map = extractNets(g);
-  aliasPlacementPins(world, map);
+  const bridged = bridgeTouchingPins(world, map);
+  aliasPlacementPins(world, map, bridged);
   const nets = createNetTable(map.count, LO);
   const comps: Component[] = [];
+  /** a pin's net: through wire when there is any, else through a direct touch */
+  const netFor = (x: number, y: number, dir: Dir): number => {
+    const wired = netAtPin(g, map, x, y, dir);
+    return wired >= 0 ? wired : (bridged.get(siteKey(x, y, dir)) ?? -1);
+  };
 
   for (let y = 0; y < g.h; y++) {
     for (let x = 0; x < g.w; x++) {
@@ -334,7 +473,7 @@ export function rebuild(world: World): void {
       const inNets: number[] = [];
       let outNet = -1;
       for (const p of worldPins(kind, x, y, rot)) {
-        const net = netAtPin(g, map, p.x, p.y, p.dir);
+        const net = netFor(p.x, p.y, p.dir);
         if (p.role === 'in') inNets.push(net);
         else outNet = net;
       }
@@ -351,7 +490,7 @@ export function rebuild(world: World): void {
       bp,
       (pinIndex) => {
         const pin = bp.pins[pinIndex];
-        return netAtPin(g, map, place.x + pin.dx, place.y + pin.dy, pin.dir);
+        return netFor(place.x + pin.dx, place.y + pin.dy, pin.dir);
       },
       {
         library: world.library,
@@ -372,7 +511,11 @@ export function rebuild(world: World): void {
   world.map = map;
   world.nets = nets;
   world.comps = comps;
+  world.bridged = bridged;
   world.dirty = false;
+  world.hist1 = new Uint8Array(nets.count);
+  world.hist2 = new Uint8Array(nets.count);
+  world.histDepth = 0;
   applyInputs(world);
   commit(world);
 }
@@ -392,6 +535,14 @@ function evaluate(c: Component, nets: NetTable, ticks: number, clockPeriod: numb
       if (v === HI) return HI;
       if (v === LO) return Z;
       return X;
+    }
+    case Kind.Or: {
+      // Reads both inputs rather than consuming them — the priced alternative
+      // to merging nets, which is free but destroys its operands.
+      const a = netValue(nets, c.inNets[0]);
+      const b = netValue(nets, c.inNets[1]);
+      if (a === Z || b === Z || a === X || b === X) return X;
+      return a === HI || b === HI ? HI : Z;
     }
     case Kind.Source:
     case Kind.Switch:
@@ -415,13 +566,58 @@ function commit(world: World): void {
   }
 }
 
-/** One simulation tick: read every input, then commit every output at once. */
+/**
+ * One ORDERED pass: each component updates and its net settles before the next
+ * component reads it.
+ *
+ * Used only to break a tie that simultaneous update cannot break for itself.
+ * Applying it generally would be wrong — a chain lying along the scan order
+ * would propagate end to end in a single tick, so ticks would measure layout
+ * instead of logic depth.
+ */
+function orderedPass(world: World): void {
+  const { nets, comps } = world;
+  for (const c of comps) {
+    c.next = evaluate(c, nets, world.ticks, world.clockPeriod);
+    c.out = c.next;
+    if (c.outNet < 0) continue;
+    let acc = 0;
+    for (const d of nets.drivers[c.outNet]) acc |= driveBit(comps[d].out);
+    nets.acc[c.outNet] = acc;
+    nets.value[c.outNet] = resolve(acc, nets.pull[c.outNet] as V);
+  }
+}
+
+function sameValues(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+/**
+ * One simulation tick: read every input, then commit every output at once.
+ *
+ * Simultaneous by default, which is what makes a tick count mean propagation
+ * depth rather than placement order. The exception is a state caught repeating
+ * with PERIOD 2 — the signature of a symmetric feedback loop, and of nothing
+ * else. Such a circuit has no simultaneous answer at all, so board order
+ * decides it, exactly as mismatched gate delays decide it in silicon. Without
+ * this a cross-coupled pair rings forever and no memory can be built.
+ */
 export function tick(world: World): void {
   if (world.dirty) rebuild(world);
   const { nets, comps } = world;
   for (const c of comps) c.next = evaluate(c, nets, world.ticks, world.clockPeriod);
   world.ticks++;
   commit(world);
+
+  if (world.histDepth >= 2 && sameValues(nets.value, world.hist2)) orderedPass(world);
+  const spare = world.hist2;
+  world.hist2 = world.hist1;
+  world.hist1 = spare;
+  if (world.hist1.length !== nets.value.length) world.hist1 = new Uint8Array(nets.value.length);
+  world.hist1.set(nets.value);
+  if (world.histDepth < 2) world.histDepth++;
 }
 
 export interface SettleResult {
@@ -463,6 +659,7 @@ export function settle(world: World, cap = 256): SettleResult {
 /** Return every component and net to power-on state without touching the board. */
 export function reset(world: World): void {
   world.ticks = 0;
+  world.histDepth = 0;
   for (const c of world.comps) {
     c.next = Z;
     c.out = Z;
@@ -496,17 +693,39 @@ function applyInputs(world: World): void {
   for (const c of world.comps) {
     if (c.kind !== Kind.Source && c.kind !== Kind.Switch) continue;
     if (c.pin) c.state = world.inputs.get(c.pin) ? 1 : 0;
+    else c.state = world.switches.get(`${c.x},${c.y}`) ?? 0;
     c.next = c.state ? HI : Z;
     c.out = c.next;
   }
 }
 
-/** Read a level output pin as a boolean. Z and X are not high. */
+/** Flip a switch that has no level pin name, and remember it across edits. */
+export function toggleSwitch(world: World, x: number, y: number): void {
+  const key = `${x},${y}`;
+  const next = (world.switches.get(key) ?? 0) ? 0 : 1;
+  world.switches.set(key, next);
+  applyInputs(world);
+  commit(world);
+}
+
+/**
+ * Read a level output pin as a boolean. Z and X are not high.
+ *
+ * A display's segments are outputs too. A level whose answer is a NUMBER should
+ * be graded on the number, not on seven sinks parked beside the thing that
+ * shows it — so the segment pins answer to their own names, and the display the
+ * player is looking at is the same device the verifier reads.
+ */
 export function readOutput(world: World, name: string): boolean {
   for (const c of world.comps) {
     if (c.kind === Kind.Sink && c.pin === name) {
       return netValue(world.nets, c.inNets[0]) === HI;
     }
+  }
+  for (const c of world.comps) {
+    if (!isDisplay(c.kind)) continue;
+    const i = kindDef(c.kind)?.pins.findIndex((p) => p.role === 'in' && p.name === name) ?? -1;
+    if (i >= 0) return netValue(world.nets, c.inNets[i]) === HI;
   }
   return false;
 }
@@ -517,6 +736,15 @@ export function readOutputVector(world: World, names: string[]): boolean[] {
 
 export function readNet(world: World, net: number): V {
   return netValue(world.nets, net);
+}
+
+/**
+ * The net a pin is on, whether it got there through wire or by touching
+ * another pin. The renderer needs this or a touching pin draws dead.
+ */
+export function pinNet(world: World, x: number, y: number, dir: Dir): number {
+  const wired = netAtPin(world.grid, world.map, x, y, dir);
+  return wired >= 0 ? wired : (world.bridged.get(`${x},${y},${dir}`) ?? -1);
 }
 
 /** Net under a cell, for the inspect tool. */
@@ -561,7 +789,7 @@ export function restore(world: World, snap: Snapshot): void {
 export function componentCount(world: World): number {
   let n = 0;
   for (const c of world.comps) {
-    if (c.kind === Kind.Inverter || c.kind === Kind.Delay) n++;
+    if (c.kind === Kind.Inverter || c.kind === Kind.Delay || c.kind === Kind.Or) n++;
   }
   return n;
 }
@@ -573,6 +801,7 @@ export function cloneWorld(world: World): World {
     placements: world.placements.map((p) => ({ ...p })),
     inputs: new Map(world.inputs),
     pinNames: new Map(world.pinNames),
+    switches: new Map(world.switches),
     dirty: true,
   };
   rebuild(w);

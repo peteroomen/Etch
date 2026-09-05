@@ -8,16 +8,16 @@ import {
   inv,
   path,
   run,
+  or,
   runVectors,
   sink,
   src,
   truthTable,
   worstTicks,
-} from './testkit';
+} from './build';
 import { componentCount } from './world';
-import { S } from './kinds';
+import { N, S } from './kinds';
 
-const bits = (s: string) => [...s].map((c) => c === '1');
 const show = (rows: boolean[][]) => rows.map((r) => r.map((b) => (b ? 1 : 0)).join('')).join(' ');
 
 /** a,b sweep in counting order: 00 01 10 11 */
@@ -186,5 +186,111 @@ describe('the blueprint library', () => {
     // q1 = a AND b, q2 = c AND d, independently
     expect(show(rows)).toBe('00 00 00 01 00 00 00 01 00 00 00 01 10 10 10 11');
     expect(componentCount(w)).toBe(6);
+  });
+});
+
+describe('the OR component — joining without consuming', () => {
+  /**
+   * The priced alternative to merging nets. Merging is free but destroys its
+   * operands; this costs a component and a tick and leaves them intact. Both
+   * stay worth using, so the constraint becomes a choice rather than a wall.
+   */
+  const orBoard = () => {
+    const w = board(10, 8);
+    src(w, 'a', 0, 1);
+    run(w, 1, 1, 5, 1);
+    src(w, 'b', 0, 5);
+    run(w, 1, 5, 5, 5);
+    path(w, [5, 1], [5, 2]); // down into the OR's north input
+    path(w, [5, 5], [5, 4]); // up into its south input
+    or(w, 5, 3);
+    run(w, 6, 3, 7, 3);
+    sink(w, 'q', 8, 3);
+    // and the operands, still readable on their own
+    sink(w, 'qa', 3, 0, N);
+    sink(w, 'qb', 3, 6, S);
+    return w;
+  };
+
+  it('is OR, at one component and one tick', () => {
+    const w = orBoard();
+    const results = runVectors(w, ['a', 'b'], ['q'], AB);
+    expect(show(results.map((r) => r.out))).toBe('0 1 1 1');
+    expect(componentCount(w)).toBe(1);
+    expect(worstTicks(results)).toBe(1);
+  });
+
+  it('leaves both operands intact, which a merge would not', () => {
+    const w = orBoard();
+    const rows = truthTable(w, ['a', 'b'], ['q', 'qa', 'qb']);
+    // q is the OR; a and b still read as themselves
+    expect(show(rows)).toBe('000 101 110 111');
+    expect(w.map.netA[1 + 1 * w.grid.w]).not.toBe(w.map.netA[1 + 5 * w.grid.w]);
+  });
+
+  it('reports an unconnected input rather than guessing', () => {
+    const w = board(10, 8);
+    src(w, 'a', 0, 1);
+    run(w, 1, 1, 5, 1);
+    path(w, [5, 1], [5, 2]);
+    or(w, 5, 3); // south input left dangling
+    run(w, 6, 3, 7, 3);
+    sink(w, 'q', 8, 3);
+    const results = runVectors(w, ['a'], ['q'], [[false], [true]]);
+    // X is not high, so the output never asserts — and the board shows it red
+    expect(show(results.map((r) => r.out))).toBe('0 0');
+  });
+});
+
+describe('pins that touch are connected', () => {
+  /**
+   * A pin binds through a net, and a net needs a wire cell to exist — so
+   * without bridging, two components pressed against each other are drawn
+   * touching and simulated apart. That is the board lying, and it cost a
+   * playtester an evening on the NOR level.
+   */
+  it('an inverter feeding a sink with no wire between them still works', () => {
+    const w = board(10, 6);
+    src(w, 'a', 0, 3);
+    run(w, 1, 3, 3, 3);
+    inv(w, 4, 3);
+    sink(w, 'q', 5, 3); // pressed straight up against the inverter
+
+    expect(show(truthTable(w, ['a'], ['q']))).toBe('1 0');
+  });
+
+  it('two inverters back to back are a buffer', () => {
+    const w = board(10, 6);
+    src(w, 'a', 0, 3);
+    run(w, 1, 3, 3, 3);
+    inv(w, 4, 3);
+    inv(w, 5, 3);
+    sink(w, 'q', 6, 3);
+
+    expect(show(truthTable(w, ['a'], ['q']))).toBe('0 1');
+    expect(componentCount(w)).toBe(2);
+  });
+
+  it('leaves pins that merely sit side by side alone', () => {
+    const w = board(10, 8);
+    src(w, 'a', 0, 3);
+    run(w, 1, 3, 3, 3);
+    inv(w, 4, 3);
+    // the sink is below the inverter, and its input faces north at nothing
+    sink(w, 'q', 4, 4, S);
+
+    expect(show(truthTable(w, ['a'], ['q']))).toBe('0 0');
+  });
+
+  it('bridges a blueprint pressed against a sink too', () => {
+    const w = board(14, 8, LIBRARY);
+    src(w, 'a', 0, 1);
+    run(w, 1, 1, 3, 1);
+    src(w, 'b', 0, 3);
+    run(w, 1, 3, 3, 3);
+    expect(bp(w, 'and2', 4, 1)).toBe(true);
+    sink(w, 'q', 6, 2); // touching the blueprint's output pad
+
+    expect(show(truthTable(w, ['a', 'b'], ['q']))).toBe('0 0 0 1');
   });
 });

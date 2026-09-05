@@ -148,3 +148,268 @@ therefore has to union the two host nets it faces — which is correct and
 visible: the two wires feeding a NOR light as one node, showing the player that
 the gate consumed them. Flattening runs union-find over host nets before the
 net table is built.
+
+### Non-destructive joining is added alongside, not instead
+Revisiting the flagged risk. Replacing wired-OR with a 1-tick OR component was
+measured, and it makes the whole game **more** expensive, not less:
+
+| | wired-OR | OR as the only join |
+|---|---|---|
+| OR | 0 comp, 0 tick | 1, 1 |
+| NOR | 1, 1 | 2, 2 |
+| NAND | 2, 1 | 3, 2 |
+| AND | 3, 2 | 4, 3 |
+| XOR | 6, 2 | 7, 4 |
+| 4-bit adder | 72 | 88 |
+
+Free OR is worth a great deal, and paying a tick of depth per gate to get the
+textbook XOR formula back is a bad trade. (An earlier note claiming XOR would
+drop to three components was wrong — that would need primitive AND and OR, a
+different change entirely.)
+
+So both exist. **Merging stays free and destructive. The OR component costs one
+component and one tick and reads its inputs instead of consuming them.** Neither
+dominates: merge when you are finished with the operands, gate when you are not.
+
+The Copy level now has two solutions at identical cost — two BUFs or two ORs,
+both four components and two ticks — which is a better lesson than a single
+forced answer. The wall becomes a priced choice.
+
+OR is 1x1 and rotatable, with inputs on opposite faces and the output on a
+third, because a gate whose operands are interchangeable should not favour one
+of them geometrically.
+
+### Wire arms are drawn from connectivity, not from the authored mask
+The "legs" bug. A junction is stored with no mask — electrically it accepts from
+every side — so drawing it from its mask put a stub on all four faces, including
+ones joined to nothing. Crossovers had the same fault, and so did wire pointing
+at a component with no pin on that face.
+
+The renderer now asks, per direction, whether anything at the other end actually
+faces back: wire-family neighbours by their effective mask, components and
+blueprint instances by their pin list. A plain wire keeps arms running into
+empty board — the player drew those and a dangling end should look dangling —
+and loses only the ones aimed at something that does not connect.
+
+### The fan-in wall is price, not possibility
+Corrected by the balance model, which searched the space exhaustively rather
+than taking my reasoning for it.
+
+A copy does not require BUF. Two inverters back to back are a copy, and they
+were always available. So every level is solvable with inverters and merging
+alone — the newer tools just make it cheaper:
+
+| level | inverters only | with BUF or OR |
+|---|---|---|
+| Copy | 5 components, 3 ticks | 4 and 2 |
+| XOR | 8 components, 3 ticks | 6 and 2 |
+
+The level briefs said "two ways out" where the honest line is "here is a third,
+and it costs more". They now name the price.
+
+#### Correction: the textbook formula is not impossible either
+
+This section used to end by claiming `(a∨b) ∧ ¬(a∧b)` is "genuinely not
+constructible", because computing `a∨b` consumes the operands the other half
+needs. That was written before the OR gate existed and was never revisited.
+
+An OR gate *reads* its operands instead of consuming them, so the formula
+transcribes literally. Measured by simulation:
+
+| route | cost |
+|---|---|
+| textbook, `a∨b` by an OR gate | 6 components, 3 ticks, correct |
+| textbook, `a∨b` by BUF copies | 7 components, 3 ticks, correct |
+| textbook, `a∨b` by merging | impossible — the merge eats the operands |
+| substrate-native `(a∧¬b) ∨ (¬a∧b)` | 6 components, 2 ticks |
+
+So the true claim is narrower and more interesting: the formula is
+untranscribable **in chapter 1's vocabulary**, and from Copy onward it is merely
+*dominated* — same component count, one tick slower.
+
+That is the better teaching moment, and it generalises. A formula is a claim
+about logic; what it costs is a claim about the technology you build it in. The
+game should let the standard design work and make the native one the reward,
+not forbid the standard one and call the substrate physics.
+
+### The metrics only start trading at the half adder
+Ten of the eleven searchable levels have exactly one non-dominated solution, so
+components, ticks and area cannot be played against each other there — the score
+is a target, not a choice. The half adder is the first level with a real
+frontier: **7 components / 3 ticks ↔ 9 / 2**, spend two to save one.
+
+That is expected for small teaching levels and it is a warning about the later
+ones. If chapter 4 lands and its levels also have a single dominant answer, the
+three-metric model is decoration and should be cut back to one.
+
+Par sits at the tick-optimal end of the half adder's frontier (9c/2t), so its
+apparent two-component "headroom" is not sloppiness — it is the trade-off doing
+its job.
+
+### Pins that touch are connected
+Found by playtesting: an inverter pressed straight against the output pad did
+not work. A pin binds through a NET, and a net needs at least one wire cell to
+exist, so two components abutting each other had nothing to share — while the
+renderer drew their stubs meeting. The picture was lying about what was joined,
+which is the same failure as the junction legs and cost an evening.
+
+Touching pins now get a net of their own, allocated past the wire nets and
+unioned so a run of abutting components forms one node. It is physically right
+and it matches what every player expects.
+
+### A pin connected to nothing draws nothing
+The corollary, and the more valuable half. The renderer used to draw every pin
+stub regardless, so an unwired gate looked wired. Stubs are now drawn only where
+the pin is actually on a net, which turns "why doesn't this work" into a visible
+gap in the picture.
+
+Two more legibility fixes from the same session, both aimed at the failures the
+variant sweep turned up:
+
+- **The placement ghost shows orientation.** Input stubs in cyan, output in
+  amber, glyph rotated. Placing a gate backwards was previously invisible until
+  you inspected the drawn glyph, and it was the commonest way to get stuck.
+- **The probe reports.** Tapping a net names it, gives its value and its driver
+  count, and outlines every cell that shares it — which is how a player answers
+  "are these actually one wire" without guessing.
+
+### OR dominates BUF, and that is a live balance problem
+The sweep's headline finding. `OR(x, x)` is a buffer, so the gate does
+everything the copy does at the same price — one component, one tick — and more
+besides. Measured across every searchable level: Gater never scores worse than
+Copier, and on the half adder it wins 7 to 8.
+
+The half adder shows exactly why. Its sum needs `a ∨ b` while its carry still
+needs `a` and `b` intact:
+
+```
+OR   n2 = OR(a,b)                    1 component
+BUF  n4 = BUF(a) | BUF(b)            2 components
+```
+
+**BUF is priced per signal preserved; OR is priced per join.** They tie when a
+join needs one operand to survive, and OR wins whenever a join needs both. It is
+hard to construct a case where BUF wins.
+
+So the two tools are not really a choice — BUF is a strictly worse OR that
+happens to arrive first. Copy feels like it has two answers only because its
+palette offers both and its shape happens to tie.
+
+Options, none taken yet:
+
+1. **Make OR two cells** (1×2 rather than 1×1). Same component cost, more area —
+   BUF wins on area, OR wins on count, and the tension lands on the metric that
+   is currently doing the least work.
+2. **Price OR at two components.** Blunt, and it would make the early gates
+   dearer than they should be.
+3. **Accept it.** BUF is training wheels that OR supersedes, and the palette
+   gating keeps it relevant for one chapter.
+
+Option 1 is the recommendation: it is the only one that turns a redundancy into
+a trade-off, and it costs a single number in the kind table.
+
+## Playtest round one
+
+Six changes, all from watching the game get played rather than from reading it.
+
+### The sandbox wears its own palette
+It never had one. `openSandbox()` did not clear `levelId`, so the free board
+inherited whatever level was last open — most often `WIRE ERASE PROBE NOT`, a
+sandbox with no way to drive a circuit and nothing to read one with. It now has
+an explicit palette that includes switches, clocks and lamps, and every
+blueprint the player has earned.
+
+The same fix exposed a second bug underneath it. `rebuild()` makes fresh
+components with `state: 0`, so every switch snapped back off the moment you
+drew another wire — which is every gesture. Switch positions now live on the
+world as `switches: Map<"x,y", number>` and are re-applied after each rebuild.
+State that belongs to the *player* must not live on a structure the editor
+rebuilds.
+
+### Never shrink a cell below a thumb
+`fitViewport` would shrink to 16px to make a whole level fit. Measured on the
+18-wide boards that is a 21px cell, which is under half the 44px hit target and
+exactly the complaint. The floor is now 28px and wide levels simply overflow;
+`clampViewport()` keeps three cells on screen so a pan can never lose the board.
+Fitting the level is worth less than being able to hit it.
+
+### Pins are marked
+"Top and bottom in, east out when facing east" is a perfectly reasonable reading
+of an unlabelled gate, and the game never corrected it. Outputs now draw a
+filled arrowhead pointing out, inputs an open notch, in neutral ink so signal
+colour keeps meaning signal. Drawn only at 18px and up, where they are legible
+rather than noise.
+
+### Verification plays back
+A verdict with a dark board tells you *that* you failed. VERIFY now runs the
+timeline, then replays it: `applyStep` drives the inputs, the board animates,
+and an amber playhead band tracks the current step on the scope. RUN walks the
+whole timeline on its own — `HOLD_TICKS` settled ticks, then the next input
+state — instead of sitting on step one forever. STEP advances one input state
+for reading a circuit at your own pace.
+
+### Briefs give the goal, not the build
+Several briefs printed their own solutions — "a copy is two inverters back to
+back", "that route costs five components and three ticks". Rewritten to state
+the goal and the constraint and stop. Early puzzles having one answer is fine in
+a teaching game; being told the answer is not.
+
+### The controls row wraps
+Adding STEP and CLEAR pushed VERIFY half off the right edge of a 390px screen.
+The tool strip may scroll — it grows with the palette — but the controls may
+not: a primary action you have to scroll to find is a bug. They wrap, and VERIFY
+lands full-width on its own row. The sandbox renders neither STEP nor VERIFY at
+all, having no timeline to walk or verify.
+
+### The smoke test
+`scripts/smoke.mjs` drives the built app in a real browser at 390px: it clicks
+the menu, picks palette chips, drags wires on the canvas, and asserts against
+the world the app actually built. Every one of the six bugs above was found by
+playing, and none of them could have been caught by the unit tests, which prove
+the simulator rather than the game. Twenty-one assertions, run against `dist`.
+
+### The display is an output device, not a decoration
+A level about showing a number should be graded on the number. `Level.display`
+places a locked `Kind.Seg7` and `readOutput` answers to its segment pins by
+name, so the device the player is looking at is the device the verifier reads.
+The alternative — seven sinks parked beside the display — would have had people
+wiring to the thing next to the answer.
+
+Its pins moved to one edge at the same time. Four west and three east is how a
+real package is built, and it turns a puzzle about which segments to light into
+a puzzle about routing three wires around the back of a part. Seven pins down
+the west edge of a 3x7 body means a driver's outputs meet them as seven straight
+wires, and the body is still digit-shaped.
+
+### A tile cannot share a wire with the board
+Segment `f` is lit for digit 0 alone, so on a board it is `n0` — a wire, costing
+nothing. Packaged as `digit4` it costs a buffer, because a blueprint's `netMap`
+has no way to say "this output pin and that input pin are the same host net".
+The tile bills nine where the hand-built matrix bills eight, and that gap is
+left visible rather than papered over: packaging has a price here, and a player
+who builds it themselves should get the better score.
+
+### A clear is a reset pin you already had
+The latch tile is sealed, so an async clear cannot be added from outside it. But
+the SR latch's R pin is exposed and R already pulls q-bar up, which makes the
+inverter holding q let go — so the clear is not new machinery, it is the reset
+input the substrate always had, reached through the one tile that exposes it.
+
+What it costs is the discipline of making the SET term let go at the same
+moment. Drive one end down while the other is still holding the node up and the
+latch is being told two things at once. CLEAR is therefore merged into both the
+set term and the reset, and both merges are free.
+
+### Two ways to count to ten, and neither wins
+A binary decade counter says the number in four wires for 75 components and 12
+ticks. A ten-stage ring says it in ten wires for 170 components and 3. The ring
+is more than twice the parts and four times faster, and its output is already
+one-hot so it drives a ten-cathode tube for nothing, where the binary route
+would need a ~50-component decoder.
+
+Both are shipped, and the chapter says plainly that this is a trade. It is the
+first place in the game where two solutions are genuinely non-dominated, which
+is what the balance sweep has been asking for since chapter 3 — the tick
+difference is structural (a ripple counter's depth grows with its stages; a
+synchronous ring's does not), so it cannot be optimised away by a cleverer
+layout.

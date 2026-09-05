@@ -93,7 +93,15 @@ export function flattenBlueprint(
   const local: number[] = new Array(bp.nets).fill(-2); // -2 = not yet assigned
 
   bp.pins.forEach((pin, i) => {
-    local[pin.net] = hostForPin(i);
+    const host = hostForPin(i);
+    // Several pins may share ONE internal net. An SR latch's S and Q are the
+    // same node — that sharing is the whole reason the latch is cheap here —
+    // so the last pin must not simply overwrite the first. Pin aliasing has
+    // already unioned the host nets of pins that share an internal net, so any
+    // connected host is the right one; what matters is that an UNCONNECTED pin
+    // (host -1) never clobbers a connected one, which used to silently
+    // disconnect a latch whose q̄ was left unwired.
+    if (local[pin.net] === -2 || (local[pin.net] < 0 && host >= 0)) local[pin.net] = host;
   });
   for (let i = 0; i < bp.nets; i++) {
     if (local[i] === -2) local[i] = ctx.allocNet();

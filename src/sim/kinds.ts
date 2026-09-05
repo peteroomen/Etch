@@ -61,6 +61,7 @@ export enum Kind {
   Nixie = 12,
   // a placed blueprint instance — occupies cells, flattens to primitives
   Blueprint = 13,
+  Or = 14,
 }
 
 export const WIRE_FAMILY = new Set<Kind>([Kind.Wire, Kind.Junction, Kind.Cross]);
@@ -71,7 +72,12 @@ export function isWireFamily(k: Kind): boolean {
 
 /** Components that hold a tick of delay and drive an output net. */
 export function isActive(k: Kind): boolean {
-  return k === Kind.Inverter || k === Kind.Delay;
+  return k === Kind.Inverter || k === Kind.Delay || k === Kind.Or;
+}
+
+/** Multi-pin readouts. They drive nothing; every pin is a segment to light. */
+export function isDisplay(k: Kind): boolean {
+  return k === Kind.Seg7 || k === Kind.Nixie;
 }
 
 export interface PinDef {
@@ -98,29 +104,40 @@ function io(name: string, dir: Dir, role: 'in' | 'out'): PinDef {
   return { dx: 0, dy: 0, dir, role, name };
 }
 
-/** Seven segments down the west edge and up the east edge of a 2x4 body. */
+/**
+ * Seven segments, one per row down the west edge of a 3x7 body.
+ *
+ * A real display has pins on both sides of the package, and this had them that
+ * way. But a puzzle about lighting a digit should be about which segments to
+ * light, not about routing three wires around the back of the part — so every
+ * segment answers from the same edge, in order, and a driver's outputs can meet
+ * them as seven straight wires.
+ */
 function seg7Pins(): PinDef[] {
-  const names = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
-  const pins: PinDef[] = [];
-  for (let i = 0; i < 4; i++) {
-    pins.push({ dx: 0, dy: i, dir: W, role: 'in', name: names[i] });
-  }
-  for (let i = 0; i < 3; i++) {
-    pins.push({ dx: 1, dy: i, dir: E, role: 'in', name: names[4 + i] });
-  }
-  return pins;
+  return ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((name, i) => ({
+    dx: 0,
+    dy: i,
+    dir: W,
+    role: 'in' as const,
+    name,
+  }));
 }
 
-/** Ten one-hot cathodes, five down each side of a 2x5 body — a 74141's worth. */
+/**
+ * Ten one-hot cathodes, one per row down the west edge — a 74141's worth.
+ *
+ * One row per digit, in order, for the same reason the seven-segment display
+ * has its pins on one edge: a one-hot driver's outputs should be able to meet
+ * them as ten straight wires. The tube is tall and thin because a real one is.
+ */
 function nixiePins(): PinDef[] {
-  const pins: PinDef[] = [];
-  for (let i = 0; i < 5; i++) {
-    pins.push({ dx: 0, dy: i, dir: W, role: 'in', name: String(i) });
-  }
-  for (let i = 0; i < 5; i++) {
-    pins.push({ dx: 1, dy: i, dir: E, role: 'in', name: String(5 + i) });
-  }
-  return pins;
+  return Array.from({ length: 10 }, (_, i) => ({
+    dx: 0,
+    dy: i,
+    dir: W,
+    role: 'in' as const,
+    name: String(i),
+  }));
 }
 
 export const KIND_DEFS: Partial<Record<Kind, KindDef>> = {
@@ -131,6 +148,16 @@ export const KIND_DEFS: Partial<Record<Kind, KindDef>> = {
     h: 1,
     rotatable: true,
     pins: [io('in', W, 'in'), io('out', E, 'out')],
+  },
+  [Kind.Or]: {
+    kind: Kind.Or,
+    label: 'OR',
+    w: 1,
+    h: 1,
+    rotatable: true,
+    // Inputs on opposite faces, output on a third: symmetric, because a gate
+    // whose operands are interchangeable should not favour one of them.
+    pins: [io('a', N, 'in'), io('b', S, 'in'), io('q', E, 'out')],
   },
   [Kind.Delay]: {
     kind: Kind.Delay,
@@ -185,16 +212,16 @@ export const KIND_DEFS: Partial<Record<Kind, KindDef>> = {
   [Kind.Seg7]: {
     kind: Kind.Seg7,
     label: '7-SEG',
-    w: 2,
-    h: 4,
+    w: 3,
+    h: 7,
     rotatable: false,
     pins: seg7Pins(),
   },
   [Kind.Nixie]: {
     kind: Kind.Nixie,
     label: 'NIXIE',
-    w: 2,
-    h: 5,
+    w: 3,
+    h: 10,
     rotatable: false,
     pins: nixiePins(),
   },
